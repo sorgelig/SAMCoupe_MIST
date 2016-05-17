@@ -55,7 +55,6 @@ module SamCoupe
    output        SDRAM_CLK,
    output        SDRAM_CKE
 );
-`default_nettype none
 
 assign LED = ~(ioctl_erasing | ioctl_download | fdd_sel);
 
@@ -110,19 +109,6 @@ wire  [1:0] switches;
 wire        scandoubler_disable;
 wire  [7:0] status;
 
-wire [31:0] sd_lba = 0;
-wire        sd_rd = 0;
-wire        sd_wr = 0;
-wire        sd_ack;
-wire        sd_ack_conf;
-wire        sd_conf = 0;
-wire        sd_sdhc = 1;
-wire  [8:0] sd_buff_addr;
-wire  [7:0] sd_buff_dout;
-wire  [7:0] sd_buff_din = 0;
-wire        sd_buff_wr;
-wire        sd_mounted;
-
 wire        ioctl_wr;
 wire [24:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
@@ -144,6 +130,17 @@ mist_io #(.STRLEN(33)) user_io
 	.joystick_analog_1(),
 	.ps2_mouse_clk(),
 	.ps2_mouse_data(),
+	.sd_lba(),
+	.sd_rd(),
+	.sd_wr(),
+	.sd_ack(),
+	.sd_ack_conf(),
+	.sd_conf(),
+	.sd_sdhc(),
+	.sd_buff_addr(),
+	.sd_buff_dout(),
+	.sd_buff_din(),
+	.sd_buff_wr(),
 	.sd_mounted()
 );
 
@@ -300,7 +297,7 @@ end
 reg [7:0] asic_dout;
 always_comb begin
 	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd1_sel})
-		'b1XXXXX: asic_dout = {soff, tape_in, 1'b0, key_data[4:0]};
+		'b1XXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
 		'b01XXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
 		'b001XXX: asic_dout = lmpr;
 		'b0001XX: asic_dout = hmpr;
@@ -370,6 +367,10 @@ wire [11:1] Fn;
 wire  [2:0] mod;
 wire  [7:0] key_data;
 keyboard kbd( .* );
+
+wire  [4:0] kbdjoy = key_data[4:0]
+	& (addr[12] ? 5'b11111 : ~{joystick_0[1],  joystick_0[0], joystick_0[2], joystick_0[3], joystick_0[4] | joystick_0[5]})
+	& (addr[11] ? 5'b11111 : ~{joystick_1[4] | joystick_1[5], joystick_1[3], joystick_1[2], joystick_1[0],  joystick_1[1]});
 
 
 ///////////////////   FDC   ///////////////////
