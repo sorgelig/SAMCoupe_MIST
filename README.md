@@ -1,0 +1,3 @@
+# Sam Coupe for [MIST Board](https://github.com/mist-devel/mist-board/wiki)
+
+Work in progress...
