@@ -90,11 +90,32 @@ always @(negedge clk_sys) begin
 	ce_6mp  <= !counter[3] & !counter[2:0];
 	ce_6mn  <=  counter[3] & !counter[2:0];
 	
-	if(counter[3] & !counter[2:0]) cpu_en <= ~cpu_wait;
+	if(!counter[3:0]) cpu_en <= ~(mem_wait | io_wait);
 
 	psg_div <= psg_div + 1'd1;
 	if(psg_div == 11) psg_div <= 0;
 	ce_psg  <= !psg_div;
+end
+
+// Contention model
+wire ram_acc = ~nMREQ & nRFSH & ~rom0_sel & ~rom1_sel;
+wire io_acc  = ~nIORQ & nM1;
+reg  mem_wait, io_wait;
+
+always @(posedge clk_sys) begin
+	reg old_ram, old_io, old_memcont, old_iocont;
+
+	old_ram <= ram_acc;
+	if(~old_ram & ram_acc & mem_contention) mem_wait <= 1;
+
+	old_memcont <= mem_contention;
+	if(~mem_contention & old_memcont) mem_wait <= 0;
+	
+	old_io  <= io_acc;
+	if(~old_io & io_acc & io_contention) io_wait <= 1;
+
+	old_iocont  <= io_contention;
+	if(~io_contention & old_iocont) io_wait <= 0;
 end
 
 
@@ -161,8 +182,6 @@ wire        nBUSRQ = ~(ioctl_download | ioctl_erasing);
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
 wire        warm_reset =  mod[2] & Fn[11];
-
-wire        cpu_wait = ((mem_contention & ~nMREQ & ~rom0_sel & ~rom1_sel) | (io_contention  & ~nIORQ & (~nRD | ~nWR))) & status[5];
 
 T80pa cpu
 (

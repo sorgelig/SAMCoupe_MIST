@@ -72,8 +72,8 @@ module video
 	output        VGA_HS
 );
 
-assign io_contention  =  ~soff ? (hc[2:0]<5) : !hc[1:0];
-assign mem_contention = (paper ? (hc[2:0]<5) : !hc[1:0]) | (!mode & (hc[2:0]<5) & ((hc<64) | (hc>=128)));
+assign io_contention  = |hc[2:0];
+assign mem_contention = (paper | (!mode & hc[6])) ? |hc[2:0] : |hc[1:0];
 
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;
