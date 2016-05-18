@@ -45,6 +45,8 @@ module video
 
 	output reg    INT_line,
 	output reg    INT_frame,
+	
+	input  [11:1] Fn,
 
 	// VRAM interfacing
 	output [18:0] vram_addr1,
@@ -72,8 +74,8 @@ module video
 	output        VGA_HS
 );
 
-assign io_contention  = |hc[2:0];
-assign mem_contention = (paper | (!mode & hc[6])) ? |hc[2:0] : |hc[1:0];
+assign io_contention  = ~&hc[2:0];
+assign mem_contention = (paper | (!mode & hc[6])) ? ~&hc[2:0] : ~&hc[1:0];
 
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;
@@ -97,7 +99,7 @@ osd #(10'd10, 10'd0, 3'd4) osd
 	.OSD_VS(VSync)
 );
 
-scandoubler scandoubler 
+scandoubler scandoubler
 (
 	.clk_sys(clk_sys),
 	.ce_x2(ce_24m),
@@ -134,15 +136,23 @@ reg [18:0] vaddr2;
 
 reg  [4:0] flashcnt;
 reg        paper;
-reg  [3:0] border;
 
 reg  [8:0] hc  = 0;
 reg  [8:0] vc  = 0;
 wire [4:0] col = hc[7:3] - 5'd15;
 
 always @(posedge clk_sys) begin
+	reg  [6:0] intcnt;
+
 	if(ce_6mp) begin
+		if(!intcnt) {INT_line, INT_frame} <= 0;
+			else intcnt <= intcnt - 1'd1;
+
 		if (hc==383) begin
+
+			if((INT_line_no < 192) & (INT_line_no == vc)) {INT_line, intcnt} <= 8'hFF;
+			if(vc == 243) {INT_frame, intcnt} <= 8'hFF;
+
 			hc <= 0;
 			if (vc == 311) begin 
 				vc <= 0;
@@ -166,13 +176,7 @@ always @(posedge clk_sys) begin
 		if( vc == 248) VSync  <= 0;
 		if((vc == 264) & (hc == 104)) VBlank <= 0;
 
-      INT_line <= ((INT_line_no < 192) & (INT_line_no == vc) & (hc < 128));
-      INT_frame<= ((vc == 244) & (hc < 128));
-
-		if(!hc[2:0]) begin
-			pixel3hi <= mode3_hi;
-			border   <= border_color;
-		end
+		if(!hc[2:0]) pixel3hi <= mode3_hi;
 
 		if(!hc) paper <= 0;
 		if((hc>=120) & (vc<192) & !hc[2:0]) begin
@@ -210,7 +214,7 @@ reg  [3:0] index;
 
 always_comb begin
 	casex({paper, mode})
-		'b0XX: index = border;
+		'b0XX: index = border_color;
 		'b10X: index = (shift[31] ^ (attr[7] & flashcnt[4])) ? {attr[6],attr[2:0]} : {attr[6],attr[5:3]};
 		'b110: index = {pixel3hi, shift[30], shift[31]};
 		'b111: index = shift[31:28];
