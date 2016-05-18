@@ -99,7 +99,7 @@ end
 
 // Contention model
 wire ram_acc = ~nMREQ & nRFSH & ~rom0_sel & ~rom1_sel;
-wire io_acc  = ~nIORQ & nM1;
+wire io_acc  = ~nIORQ & ~(nRD & nWR) & nM1;
 reg  mem_wait, io_wait;
 
 always @(posedge clk_sys) begin

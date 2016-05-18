@@ -142,16 +142,9 @@ reg  [8:0] vc  = 0;
 wire [4:0] col = hc[7:3] - 5'd15;
 
 always @(posedge clk_sys) begin
-	reg  [6:0] intcnt;
 
 	if(ce_6mp) begin
-		if(!intcnt) {INT_line, INT_frame} <= 0;
-			else intcnt <= intcnt - 1'd1;
-
 		if (hc==383) begin
-
-			if((INT_line_no < 192) & (INT_line_no == vc)) {INT_line, intcnt} <= 8'hFF;
-			if(vc == 243) {INT_frame, intcnt} <= 8'hFF;
 
 			hc <= 0;
 			if (vc == 311) begin 
@@ -177,6 +170,9 @@ always @(posedge clk_sys) begin
 		if((vc == 264) & (hc == 104)) VBlank <= 0;
 
 		if(!hc[2:0]) pixel3hi <= mode3_hi;
+
+		INT_line  <= ((INT_line_no < 192) & (INT_line_no == vc) & (hc<128));
+		INT_frame <= ((vc == 244) & (hc<128));
 
 		if(!hc) paper <= 0;
 		if((hc>=120) & (vc<192) & !hc[2:0]) begin
