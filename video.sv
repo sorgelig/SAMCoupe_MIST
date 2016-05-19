@@ -145,6 +145,9 @@ reg  [8:0] hc  = 0;
 reg  [8:0] vc  = 0;
 wire [4:0] col = {~hc[7], hc[6:3]};
 
+wire [7:0] lpen;
+reg  [7:0] hpen;
+
 always @(posedge clk_sys) begin
 
 	if(ce_6mp) begin
@@ -211,6 +214,13 @@ always @(posedge clk_sys) begin
 			shift <= fetch ? {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]} : 32'd0;
 			attr  <= fetch ? vram_dout2[7:0] : 8'd0;
 		end
+
+		//131,139,...383
+		if(~io_contention) begin
+			// due to permanent 1/8 I/O contention only upper 5 bits of lpen are meaningful.
+			lpen <= paper ? {col, 2'b00, index[0]} : {7'h00, index[0]};
+			hpen <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
+		end
 	end
 end
 
@@ -254,24 +264,13 @@ always @(posedge clk_sys) begin
 	reg old_wr;
 	if(reset) begin
 		vmpr <= 'b01100000; // mode 4 + screen off to hide garbage on startup.
-	end else if(ce_6mn) begin
+	end else begin
 		old_wr <= io_wr;
 		if(~old_wr & io_wr) begin
 			if(vmpr_sel) vmpr <= din[6:0];
 			if(pal_sel)  palette[addr[11:8]] <= din[6:0];
 			if(intl_sel) INT_line_no <= din;
 		end
-	end
-end
-
-reg  [7:0] hpen;
-reg  [7:0] lpen;
-always @(posedge clk_sys) begin
-	reg old_iorq;
-	old_iorq <= nIORQ;
-	if(old_iorq & ~nIORQ) begin
-		lpen <= paper ? {~hc[7], hc[6:0]} : index[0];
-		hpen <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
 	end
 end
 
