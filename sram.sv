@@ -50,17 +50,16 @@ module sram
 	input             we,
 	input             rd,
 	
-	output      [2:0] d_cli,
-	output reg        ready,
-
 	input      [24:0] vid_addr1,
 	input      [24:0] vid_addr2,
 	output reg [15:0] vid_data1,
 	output reg [15:0] vid_data2,
 	
 	input      [24:0] misc_addr,
-	output reg  [7:0] misc_data,
+	output reg  [7:0] misc_dout,
+	input       [7:0] misc_din,
 	input             misc_rd,
+	input             misc_we,
 	output reg        misc_ready
 );
 
@@ -99,8 +98,6 @@ reg        cke     = 0;
 reg [24:0] save_addr;
 reg [15:0] data;
 
-assign d_cli = cli;
-
 typedef enum
 {
 	STATE_STARTUP,
@@ -116,7 +113,8 @@ reg  [2:0] cli;
 always @(posedge clk) begin
 	reg [CAS_LATENCY:0] data_ready_delay;
 
-	reg        old_we, old_rd, old_rd2;
+	reg        old_we, old_rd, old_we2, old_rd2;
+	reg        we_req2, rd_req2;
 	reg [24:0] old_addr1, old_addr2, old_addr3;
 	reg  [7:0] save_data;
 	reg        save_we;
@@ -136,11 +134,16 @@ always @(posedge clk) begin
 			0: dout      <= save_addr[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0];
 			1: vid_data1 <= save_addr[0] ? {SDRAM_DQ[7:0], SDRAM_DQ[15:8]} : {SDRAM_DQ[15:8], SDRAM_DQ[7:0]};
 			2: vid_data2 <= save_addr[0] ? {SDRAM_DQ[7:0], SDRAM_DQ[15:8]} : {SDRAM_DQ[15:8], SDRAM_DQ[7:0]};
-			3: begin misc_data <= save_addr[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0]; misc_ready <= 1; end
+			3: begin misc_dout <= save_addr[0] ? SDRAM_DQ[15:8] : SDRAM_DQ[7:0]; misc_ready <= 1; end
 			default: ;
 		endcase
-		ready <= 1;
 	end
+
+	old_rd2 <= misc_rd;
+	if(~old_rd2 & misc_rd) {misc_ready, rd_req2} <= 1;
+
+	old_we2 <= misc_we;
+	if(~old_we2 & misc_we) {misc_ready, we_req2} <= 1;
 
 	case(state)
 		STATE_STARTUP: begin
@@ -221,7 +224,6 @@ always @(posedge clk) begin
 					SDRAM_BA <= addr[24:23];
 					state    <= STATE_OPEN_1;
 					command  <= CMD_ACTIVE;
-					ready    <= 0;
 				end else if(old_addr1 != vid_addr1) begin
 					old_addr1<= vid_addr1;
 					cli      <= 1;
@@ -232,7 +234,6 @@ always @(posedge clk) begin
 					SDRAM_BA <= vid_addr1[24:23];
 					state    <= STATE_OPEN_1;
 					command  <= CMD_ACTIVE;
-					ready    <= 0;
 				end else if(old_addr2 != vid_addr2) begin
 					old_addr2<= vid_addr2;
 					cli      <= 2;
@@ -243,24 +244,21 @@ always @(posedge clk) begin
 					SDRAM_BA <= vid_addr2[24:23];
 					state    <= STATE_OPEN_1;
 					command  <= CMD_ACTIVE;
-					ready    <= 0;
-				end else if(~old_rd2 & misc_rd) begin
-					old_rd2  <= misc_rd;
+				end else if(rd_req2 | we_req2) begin
 					cli      <= 3;
-					save_we  <= 0;
-					save_data<= 0;
+					save_we  <= we_req2;
+					save_data<= misc_din;
 					save_addr<= misc_addr;
 					SDRAM_A  <= misc_addr[13:1];
 					SDRAM_BA <= misc_addr[24:23];
 					state    <= STATE_OPEN_1;
 					command  <= CMD_ACTIVE;
-					misc_ready <= 0;
-					ready    <= 0;
+					we_req2  <= 0;
+					rd_req2  <= 0;
 				end else begin
 					cli      <= 4;
 					state    <= STATE_IDLE_7;
 					command  <= CMD_AUTO_REFRESH;
-					ready    <= 1;
 				end
 			end
 		end
@@ -287,13 +285,12 @@ always @(posedge clk) begin
 			state       <= STATE_IDLE_5;
 			command     <= CMD_WRITE;
 			SDRAM_DQ    <= {save_data, save_data};
-			ready       <= 1;
+			if(cli == 3) misc_ready <= 1;
 		end
 	endcase
 	
 	if(~we) old_we <= 0;
 	if(~rd) old_rd <= 0;
-	if(~misc_rd) old_rd2 <= 0;
 
 	if(init) begin
 		state <= STATE_STARTUP;

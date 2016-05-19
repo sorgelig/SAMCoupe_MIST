@@ -178,7 +178,6 @@ wire        nWR;
 wire        nRFSH;
 wire        nBUSACK;
 wire        nINT   = ~(INT_line | INT_frame);
-wire        nBUSRQ = ~(ioctl_download | ioctl_erasing);
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
 wire        warm_reset =  mod[2] & Fn[11];
@@ -192,7 +191,7 @@ T80pa cpu
 	.WAIT_n(1),
 	.INT_n(nINT),
 	.NMI_n(1),
-	.BUSRQ_n(nBUSRQ),
+	.BUSRQ_n(1),
 	.M1_n(nM1),
 	.MREQ_n(nMREQ),
 	.IORQ_n(nIORQ),
@@ -223,21 +222,16 @@ end
 
 
 //////////////////   MEMORY   //////////////////
-wire        dma = (reset | ~nBUSACK) & ~nBUSRQ;
 reg  [24:0] ram_addr;
-wire  [7:0] ram_din = dma ? ioctl_dout : cpu_dout;
-wire        ram_we  = dma ? ioctl_wr   : ~(rom0_sel | rom1_sel | ram_wp | ext_ram) & ~nMREQ & ~nWR;
-wire        ram_rd  = dma ? 1'b0       : (fdd_read | ~nMREQ) & ~nRD;
 
 always_comb begin
-	casex({dma, fdd_read, rom0_sel | rom1_sel, addr[15:14]})
-		'b1XX_XX: ram_addr = ioctl_addr;
-		'b01X_XX: ram_addr = {2'd2, fdd_addr};
-		'b001_XX: ram_addr = {6'h20,addr[15], addr[13:0]};
-		'b000_00: ram_addr = {page_ab,        addr[13:0]};
-		'b000_01: ram_addr = {page_ab + 1'b1, addr[13:0]};
-		'b000_10: ram_addr = {page_cd,        addr[13:0]};
-		'b000_11: ram_addr = {page_cd + 1'b1, addr[13:0]};
+	casex({fdd_read, rom0_sel | rom1_sel, addr[15:14]})
+		'b1X_XX: ram_addr = {2'd2, fdd_addr};
+		'b01_XX: ram_addr = {6'h20,addr[15], addr[13:0]};
+		'b00_00: ram_addr = {page_ab,        addr[13:0]};
+		'b00_01: ram_addr = {page_ab + 1'b1, addr[13:0]};
+		'b00_10: ram_addr = {page_cd,        addr[13:0]};
+		'b00_11: ram_addr = {page_cd + 1'b1, addr[13:0]};
 	endcase
 end
 
@@ -249,21 +243,20 @@ sram ram
 	.clk(clk_sys),
 	.addr(ram_addr),
 	.dout(ram_dout),
-	.din(ram_din),
-	.we(ram_we),
-	.rd(ram_rd),
-
-	.d_cli(),
-	.ready(),
+	.din(cpu_dout),
+	.we(~(rom0_sel | rom1_sel | ram_wp | ext_ram) & ~nMREQ & ~nWR),
+	.rd((fdd_read | ~nMREQ) & ~nRD),
 
 	.vid_addr1(vram_addr1),
 	.vid_addr2(vram_addr2),
 	.vid_data1(vram_dout1),
 	.vid_data2(vram_dout2),
 
-	.misc_addr(0),
-	.misc_data(),
+	.misc_addr(ioctl_addr),
+	.misc_din(ioctl_dout),
+	.misc_dout(),
 	.misc_rd(0),
+	.misc_we(ioctl_wr),
 	.misc_ready()
 );
 
