@@ -76,21 +76,51 @@ reg  ce_6mp;
 reg  ce_6mn;
 reg  ce_24m;
 reg  cpu_en;
-wire ce_cpu_p = cpu_en & ce_6mp;
-wire ce_cpu_n = cpu_en & ce_6mn;
-wire ce_cpu   = ce_6mn;
+reg  cpu_p;
+reg  cpu_n;
+wire ce_cpu_p = cpu_en & cpu_p;
+wire ce_cpu_n = cpu_en & cpu_n;
+wire ce_bus   = ce_6mn;
+
+wire real_zx = (!video_mode && status[2]);
 
 always @(negedge clk_sys) begin
 	reg [3:0] counter = 0;
 	reg [3:0] psg_div = 0;
+	reg [4:0] zx_div = 0;
+	reg       old_zx, orig_en, zx_en;
+	reg [1:0] timeout;
 
 	counter <=  counter + 1'd1;
-
 	ce_24m  <= !counter[1:0];
 	ce_6mp  <= !counter[3] & !counter[2:0];
 	ce_6mn  <=  counter[3] & !counter[2:0];
-	
-	if(!counter[3:0]) cpu_en <= ~(ram_wait | io_wait);
+	if(orig_en) begin
+		cpu_p <= !counter[3] & !counter[2:0];
+		cpu_n <=  counter[3] & !counter[2:0];
+	end
+
+	if(!counter[3:0]) cpu_en <= ~(ram_wait | io_wait) | zx_en;
+
+	zx_div <= zx_div + 1'd1;
+	if(zx_div == 26) zx_div <= 0;
+	if(zx_en) begin
+		cpu_p <= (zx_div == 0);
+		cpu_n <= (zx_div == 13);
+	end
+
+	if(((old_zx != real_zx) & cpu_en) | (~zx_en & ~orig_en)) begin
+		if(orig_en & (counter[3:0] == 1)) orig_en <= 0;
+		if(zx_en   & (zx_div == 1)) zx_en <= 0;
+		if(~orig_en & ~zx_en & (zx_div == 1)) timeout <= timeout - 1'b1;
+		if(!timeout) begin
+			old_zx <= real_zx;
+			if(real_zx) zx_en <= 1;
+				else orig_en <= 1;
+		end
+	end else begin
+		timeout <= 3;
+	end
 
 	psg_div <= psg_div + 1'd1;
 	if(psg_div == 11) psg_div <= 0;
@@ -106,13 +136,13 @@ always @(posedge clk_sys) begin
 	reg old_ram, old_io, old_memcont, old_iocont;
 
 	old_ram <= ram_acc;
-	if(~old_ram & ram_acc & mem_contention) ram_wait <= 1;
+	if(~old_ram & ram_acc & mem_contention) ram_wait <= ~status[1] & ~real_zx;
 
 	old_memcont <= mem_contention;
 	if(~mem_contention & old_memcont) ram_wait <= 0;
 	
 	old_io  <= io_acc;
-	if(~old_io & io_acc & io_contention) io_wait <= 1;
+	if(~old_io & io_acc & io_contention) io_wait <= ~status[1] & ~real_zx;
 
 	old_iocont  <= io_contention;
 	if(~io_contention & old_iocont) io_wait <= 0;
@@ -138,12 +168,12 @@ wire        ioctl_erasing;
 wire  [4:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
-mist_io #(.STRLEN(12)) user_io
+mist_io #(.STRLEN(60)) user_io
 (
 	.*,
 	.conf_str
 	(
-        "SAMCOUPE;DSK"
+        "SAMCOUPE;DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real"
 	),
 
 	// unused
@@ -383,13 +413,20 @@ wire [15:0] vram_dout1;
 wire [15:0] vram_dout2;
 wire  [7:0] vid_dout;
 wire        vid_sel;
-wire        soff = brdr[7] & mode34;
-wire        mode34;
+wire        soff = brdr[7] & video_mode[1];
 wire        INT_line;
 wire        INT_frame;
 wire        mem_contention;
 wire        io_contention;
-video video(.*, .din(cpu_dout), .dout(vid_dout), .dout_en(vid_sel));
+wire  [1:0] video_mode;
+
+video video
+(
+	.*,
+	.din(cpu_dout),
+	.dout(vid_dout),
+	.dout_en(vid_sel)
+);
 
 
 //////////////////   KEYBOARD   //////////////////
@@ -436,7 +473,7 @@ end
 wd1793 fdd
 (
 	.clk_sys(clk_sys),
-	.ce(ce_cpu),
+	.ce(cpu_n),
 	.reset(reset),
 	.io_en(fdd_sel),
 	.rd(~nRD),

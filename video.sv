@@ -53,7 +53,7 @@ module video
 	input   [3:0] border_color,
 	input         scandoubler_disable,
 	input         soff,
-	output        mode34,
+	output  [1:0] video_mode,
 	input   [1:0] mode3_hi,
 
 	// OSD IO interface
@@ -239,7 +239,7 @@ assign {G[1],R[1],B[1],I,G[0],R[0],B[0]} = (HBlank | VBlank | soff) ? 7'b0 : pal
 
 assign     dout_en = vmpr_sel | attr_sel | lpen_sel | hpen_sel;
 assign     dout = port_data;
-assign     mode34 = vmpr[6];
+assign     video_mode = mode;
 
 reg  [7:0] INT_line_no = 255;
 reg  [6:0] vmpr;

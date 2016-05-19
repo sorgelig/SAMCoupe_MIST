@@ -30,7 +30,7 @@ module sram
 (
    input             init,        // reset to initialize RAM
    input             clk,         // clock ~100MHz
-   input             ce_cpu,
+   input             ce_bus,      // system quantum
                                   //
                                   // SDRAM_* - signals to the MT48LC16M16 chip
    inout  reg [15:0] SDRAM_DQ,    // 16 bit bidirectional data bus
@@ -126,7 +126,7 @@ always @(posedge clk) begin
 	refresh_count  <= refresh_count+1'b1;
 
 	data_ready_delay <= {1'b0, data_ready_delay[CAS_LATENCY:1]};
-	ce_nd2 <= ce_cpu;
+	ce_nd2 <= ce_bus;
 	ce_nd  <= ce_nd2;
 
 	if(data_ready_delay[0]) begin
