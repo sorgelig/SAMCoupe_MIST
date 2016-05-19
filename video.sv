@@ -35,18 +35,13 @@ module video
 	input   [7:0] din,
 	output  [7:0] dout,
 	output        dout_en,
-	input         nMREQ,
-	input         nIORQ,
-	input         nRFSH,
-	input         nWR,
-	
+	input         port_we,
+
 	output        mem_contention,
 	output        io_contention,
 
 	output reg    INT_line,
 	output reg    INT_frame,
-	
-	input  [11:1] Fn,
 
 	// VRAM interfacing
 	output [18:0] vram_addr1,
@@ -208,7 +203,7 @@ always @(posedge clk_sys) begin
 				endcase
 			end
 		end
-		
+
 		if(hc[2:0] == 4) begin
 			paper <= fetch;
 			shift <= fetch ? {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]} : 32'd0;
@@ -259,14 +254,14 @@ wire       intl_sel = (addr[7:0] == 249);
 wire       attr_sel = (addr[7:0] == 255);
 
 reg  [6:0] palette[16] = '{'h00, 'h11, 'h22, 'h33, 'h44, 'h55, 'h66, 'h77, 'h00, 'h19, 'h2A, 'h3B, 'h4C, 'h5D, 'h6E, 'h7F};
-wire       io_wr = ~nIORQ & ~nWR;
+
 always @(posedge clk_sys) begin
-	reg old_wr;
+	reg old_we;
 	if(reset) begin
 		vmpr <= 'b01100000; // mode 4 + screen off to hide garbage on startup.
 	end else begin
-		old_wr <= io_wr;
-		if(~old_wr & io_wr) begin
+		old_we <= port_we;
+		if(~old_we & port_we) begin
 			if(vmpr_sel) vmpr <= din[6:0];
 			if(pal_sel)  palette[addr[11:8]] <= din[6:0];
 			if(intl_sel) INT_line_no <= din;
