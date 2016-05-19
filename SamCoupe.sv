@@ -90,7 +90,7 @@ always @(negedge clk_sys) begin
 	ce_6mp  <= !counter[3] & !counter[2:0];
 	ce_6mn  <=  counter[3] & !counter[2:0];
 	
-	if(!counter[3:0]) cpu_en <= ~(mem_wait | io_wait);
+	if(!counter[3:0]) cpu_en <= ~(ram_wait | io_wait);
 
 	psg_div <= psg_div + 1'd1;
 	if(psg_div == 11) psg_div <= 0;
@@ -98,18 +98,18 @@ always @(negedge clk_sys) begin
 end
 
 // Contention model
-wire ram_acc = ~nMREQ & nRFSH & ~rom0_sel & ~rom1_sel;
+wire ram_acc = ~nMREQ & nRFSH & ~rom0_sel & ~rom1_sel & ~ext_ram;
 wire io_acc  = ~nIORQ & ~(nRD & nWR) & nM1;
-reg  mem_wait, io_wait;
+reg  ram_wait, io_wait;
 
 always @(posedge clk_sys) begin
 	reg old_ram, old_io, old_memcont, old_iocont;
 
 	old_ram <= ram_acc;
-	if(~old_ram & ram_acc & mem_contention) mem_wait <= 1;
+	if(~old_ram & ram_acc & mem_contention) ram_wait <= 1;
 
 	old_memcont <= mem_contention;
-	if(~mem_contention & old_memcont) mem_wait <= 0;
+	if(~mem_contention & old_memcont) ram_wait <= 0;
 	
 	old_io  <= io_acc;
 	if(~old_io & io_acc & io_contention) io_wait <= 1;
@@ -138,12 +138,12 @@ wire        ioctl_erasing;
 wire  [4:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
-mist_io #(.STRLEN(33)) user_io
+mist_io #(.STRLEN(12)) user_io
 (
 	.*,
 	.conf_str
 	(
-        "SAMCOUPE;DSK;O5,Contention,Off,On"
+        "SAMCOUPE;DSK"
 	),
 
 	// unused
@@ -226,7 +226,7 @@ end
 wire        dma = (reset | ~nBUSACK) & ~nBUSRQ;
 reg  [24:0] ram_addr;
 wire  [7:0] ram_din = dma ? ioctl_dout : cpu_dout;
-wire        ram_we  = dma ? ioctl_wr   : ~(rom0_sel | rom1_sel | ram_wp) & ~nMREQ & ~nWR;
+wire        ram_we  = dma ? ioctl_wr   : ~(rom0_sel | rom1_sel | ram_wp | ext_ram) & ~nMREQ & ~nWR;
 wire        ram_rd  = dma ? 1'b0       : (fdd_read | ~nMREQ) & ~nRD;
 
 always_comb begin
@@ -252,7 +252,7 @@ sram ram
 	.din(ram_din),
 	.we(ram_we),
 	.rd(ram_rd),
-	
+
 	.d_cli(),
 	.ready(),
 

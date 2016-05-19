@@ -74,8 +74,12 @@ module video
 	output        VGA_HS
 );
 
+// Originally should be 0-128, but some offset required for T80
+localparam INT_Start = 4;
+localparam INT_End   = 132;
+
 assign io_contention  = ~&hc[2:0];
-assign mem_contention = (paper | (!mode & hc[6])) ? ~&hc[2:0] : ~&hc[1:0];
+assign mem_contention = (fetch | (!mode & hc[6])) ? ~&hc[2:0] : ~&hc[1:0];
 
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;
@@ -135,11 +139,11 @@ reg [18:0] vaddr1;
 reg [18:0] vaddr2;
 
 reg  [4:0] flashcnt;
-reg        paper;
+reg        paper, fetch;
 
 reg  [8:0] hc  = 0;
 reg  [8:0] vc  = 0;
-wire [4:0] col = hc[7:3] - 5'd15;
+wire [4:0] col = {~hc[7], hc[6:3]};
 
 always @(posedge clk_sys) begin
 
@@ -159,10 +163,10 @@ always @(posedge clk_sys) begin
 		if(mode == 2) shift <= shift << 2;
 	end
 	if(ce_6mn) begin
-		if(hc == 24)  HBlank <= 1;
-		if(hc == 40)  HSync  <= 1;
-		if(hc == 72)  HSync  <= 0;
-		if(hc == 104) HBlank <= 0;
+		if(hc == 28)  HBlank <= 1;
+		if(hc == 44)  HSync  <= 1;
+		if(hc == 76)  HSync  <= 0;
+		if(hc == 108) HBlank <= 0;
 
 		if((vc == 240) & (hc == 24))  VBlank <= 1;
 		if( vc == 244) VSync  <= 1;
@@ -171,11 +175,18 @@ always @(posedge clk_sys) begin
 
 		if(!hc[2:0]) pixel3hi <= mode3_hi;
 
-		INT_line  <= ((INT_line_no < 192) & (INT_line_no == vc) & (hc<128));
-		INT_frame <= ((vc == 244) & (hc<128));
+		if((INT_line_no < 192) & (INT_line_no == vc) & (hc == INT_Start)) INT_line <=1;
+		if((vc == 244) & (hc == INT_Start)) INT_frame <= 1;
+		if(hc == INT_End) {INT_line, INT_frame} <= 0;
 
-		if(!hc) paper <= 0;
-		if((hc>=120) & (vc<192) & !hc[2:0]) begin
+		case(mode)
+			0,1: shift <= shift << 1;
+			  2: shift <= shift << 2;
+			  3: shift <= shift << 4;
+		endcase
+
+		if(!hc) fetch <= 0;
+		if((hc>=128) & (vc<192) & !hc[2:0]) begin
 			case(mode)
 				0: begin
 						vaddr1 <= {page, 1'b0, vc[7:6],vc[2:0],vc[5:3],col};
@@ -190,17 +201,13 @@ always @(posedge clk_sys) begin
 						vaddr2 <= {page[4:1], vc[7:0],col, 2'b10};
 					end
 			endcase
+			fetch <= ~soff;
+		end
+		
+		if(hc[2:0] == 4) begin
+			paper <= fetch;
 			shift <= {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]};
-			if(hc >=128) begin
-				attr  <= vram_dout2[7:0];
-				paper <= ~soff;
-			end
-		end else begin
-			case(mode)
-				0,1: shift <= shift << 1;
-				  2: shift <= shift << 2;
-				  3: shift <= shift << 4;
-			endcase
+			attr  <= vram_dout2[7:0];
 		end
 	end
 end
