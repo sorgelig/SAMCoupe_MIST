@@ -187,27 +187,29 @@ always @(posedge clk_sys) begin
 
 		if(!hc) fetch <= 0;
 		if((hc>=128) & (vc<192) & !hc[2:0]) begin
-			case(mode)
-				0: begin
-						vaddr1 <= {page, 1'b0, vc[7:6],vc[2:0],vc[5:3],col};
-						vaddr2 <= {page, 4'b0110,vc[7:3],col};
-					end
-				1: begin
-						vaddr1 <= {page, 1'b0, vc[7:0],col};
-						vaddr2 <= {page, 1'b1, vc[7:0],col};
-					end
-				2,3: begin
-						vaddr1 <= {page[4:1], vc[7:0],col, 2'b00};
-						vaddr2 <= {page[4:1], vc[7:0],col, 2'b10};
-					end
-			endcase
 			fetch <= ~soff;
+			if(~soff) begin
+				case(mode)
+					0: begin
+							vaddr1 <= {page, 1'b0, vc[7:6],vc[2:0],vc[5:3],col};
+							vaddr2 <= {page, 4'b0110,vc[7:3],col};
+						end
+					1: begin
+							vaddr1 <= {page, 1'b0, vc[7:0],col};
+							vaddr2 <= {page, 1'b1, vc[7:0],col};
+						end
+					2,3: begin
+							vaddr1 <= {page[4:1], vc[7:0],col, 2'b00};
+							vaddr2 <= {page[4:1], vc[7:0],col, 2'b10};
+						end
+				endcase
+			end
 		end
 		
 		if(hc[2:0] == 4) begin
 			paper <= fetch;
-			shift <= {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]};
-			attr  <= vram_dout2[7:0];
+			shift <= fetch ? {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]} : 32'd0;
+			attr  <= fetch ? vram_dout2[7:0] : 8'd0;
 		end
 	end
 end
