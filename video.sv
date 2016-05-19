@@ -168,10 +168,10 @@ always @(posedge clk_sys) begin
 		if(hc == 76)  HSync  <= 0;
 		if(hc == 108) HBlank <= 0;
 
-		if((vc == 240) & (hc == 24))  VBlank <= 1;
-		if( vc == 244) VSync  <= 1;
-		if( vc == 248) VSync  <= 0;
-		if((vc == 264) & (hc == 104)) VBlank <= 0;
+		if((vc == 236) & (hc == 24))  VBlank <= 1;
+		if( vc == 240) VSync  <= 1;
+		if( vc == 244) VSync  <= 0;
+		if((vc == 260) & (hc == 104)) VBlank <= 0;
 
 		if(!hc[2:0]) pixel3hi <= mode3_hi;
 
