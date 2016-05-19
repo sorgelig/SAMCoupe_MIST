@@ -99,7 +99,7 @@ end
 
 // Contention model
 wire ram_acc = ~nMREQ & nRFSH & ~rom0_sel & ~rom1_sel & ~ext_ram;
-wire io_acc  = ~nIORQ & ~(nRD & nWR) & nM1;
+wire io_acc  = ~nIORQ & ~(nRD & nWR) & nM1 & &addr[7:3];
 reg  ram_wait, io_wait;
 
 always @(posedge clk_sys) begin
@@ -181,6 +181,7 @@ wire        nINT   = ~(INT_line | INT_frame);
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
 wire        warm_reset =  mod[2] & Fn[11];
+wire        port_we    = ~nIORQ & ~nWR & nM1;
 
 T80pa cpu
 (
@@ -190,7 +191,7 @@ T80pa cpu
 	.CEN_n(ce_cpu_n),
 	.WAIT_n(1),
 	.INT_n(nINT),
-	.NMI_n(1),
+	.NMI_n(Fn[11]),
 	.BUSRQ_n(1),
 	.M1_n(nM1),
 	.MREQ_n(nMREQ),
@@ -207,7 +208,7 @@ T80pa cpu
 
 always_comb begin
 	case({nMREQ, ~nM1 | nIORQ | nRD})
-	    'b01: cpu_din = mem_dout;
+	    'b01: cpu_din = ram_dout;
 	    'b10: cpu_din = asic_dout;
 	 default: cpu_din = 8'hFF;
 	endcase
@@ -223,15 +224,16 @@ end
 
 //////////////////   MEMORY   //////////////////
 reg  [24:0] ram_addr;
-
 always_comb begin
-	casex({fdd_read, rom0_sel | rom1_sel, addr[15:14]})
-		'b1X_XX: ram_addr = {2'd2, fdd_addr};
-		'b01_XX: ram_addr = {6'h20,addr[15], addr[13:0]};
-		'b00_00: ram_addr = {page_ab,        addr[13:0]};
-		'b00_01: ram_addr = {page_ab + 1'b1, addr[13:0]};
-		'b00_10: ram_addr = {page_cd,        addr[13:0]};
-		'b00_11: ram_addr = {page_cd + 1'b1, addr[13:0]};
+	casex({fdd_read, rom0_sel | rom1_sel, ext_ram, addr[15:14]})
+		'b1XX_XX: ram_addr = {3'd5, fdd_addr};
+		'b01X_XX: ram_addr = {5'h10,addr[15], addr[13:0]};
+		'b001_X0: ram_addr = {ext_c_off,      addr[13:0]};
+		'b001_X1: ram_addr = {ext_d_off,      addr[13:0]};
+		'b000_00: ram_addr = {page_ab,        addr[13:0]};
+		'b000_01: ram_addr = {page_ab + 1'b1, addr[13:0]};
+		'b000_10: ram_addr = {page_cd,        addr[13:0]};
+		'b000_11: ram_addr = {page_cd + 1'b1, addr[13:0]};
 	endcase
 end
 
@@ -244,7 +246,7 @@ sram ram
 	.addr(ram_addr),
 	.dout(ram_dout),
 	.din(cpu_dout),
-	.we(~(rom0_sel | rom1_sel | ram_wp | ext_ram) & ~nMREQ & ~nWR),
+	.we(~(rom0_sel | rom1_sel | ram_wp) & ~nMREQ & ~nWR),
 	.rd((fdd_read | ~nMREQ) & ~nRD),
 
 	.vid_addr1(vram_addr1),
@@ -260,7 +262,24 @@ sram ram
 	.misc_ready()
 );
 
-wire [7:0] mem_dout = ext_ram ? 8'hFF : ram_dout;
+
+//////////////////////  EXT.RAM  ////////////////////
+reg  [7:0] ext_c;
+reg  [7:0] ext_d;
+wire [8:0] ext_c_off = 9'h40 + ext_c;
+wire [8:0] ext_d_off = 9'h40 + ext_d;
+
+wire       ext_c_sel = (addr[7:0] == 128);
+wire       ext_d_sel = (addr[7:0] == 129);
+
+always @(posedge clk_sys) begin
+	reg old_we;
+	old_we <= port_we;
+	if(port_we & ~old_we) begin
+		if(ext_c_sel) ext_c <= cpu_dout;
+		if(ext_d_sel) ext_d <= cpu_dout;
+	end
+end
 
 
 ////////////////////  ASIC PORTS  ///////////////////
@@ -288,7 +307,6 @@ wire       brdr_sel = (addr[7:0] == 254);
 wire       fdd1_sel = (addr[7:0] >= 224) & (addr[7:0] <= 231);
 //wire       fdd2_sel = (addr[7:0] >= 240) & (addr[7:0] <= 247);
 
-wire       asic_we  = ~nIORQ & ~nWR & nM1;
 always @(posedge clk_sys) begin
 	reg old_we;
 	
@@ -296,9 +314,9 @@ always @(posedge clk_sys) begin
 		lmpr <= 0;
 		hmpr <= 0;
 		brdr <= 'b10000000; // mode 4 + screen off to hide garbage on startup.
-	end else if(ce_6mn) begin
-		old_we <= asic_we;
-		if(asic_we & ~old_we) begin
+	end else begin
+		old_we <= port_we;
+		if(port_we & ~old_we) begin
 			if(brdr_sel) brdr <= cpu_dout;
 			if(lmpr_sel) lmpr <= cpu_dout;
 			if(hmpr_sel) hmpr <= cpu_dout;
