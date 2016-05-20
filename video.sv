@@ -169,8 +169,6 @@ always @(posedge clk_sys) begin
 		if( vc == 244) VSync  <= 0;
 		if((vc == 260) & (hc == 104)) VBlank <= 0;
 
-		if(!hc[2:0]) pixel3hi <= mode3_hi;
-
 		INT_line  <= (INT_line_no < 192) & (INT_line_no == vc) & (hc<128);
 		INT_frame <= (vc == 244) & (hc<128);
 
@@ -203,25 +201,26 @@ always @(posedge clk_sys) begin
 			lpen <= {{5{paper}} & col, 2'd0, index[0]};
 			hpen <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
 			border <= border_color;
+			m3_idx <= mode3_hi;
 		end
 	end
 end
 
-reg  [1:0] pixel3hi;
+reg  [1:0] m3_idx;
 reg  [3:0] index;
 
 always_comb begin
 	casex({paper, mode})
 		'b0XX: index = border;
 		'b10X: index = (shift[31] ^ (attr[7] & flashcnt[4])) ? {attr[6],attr[2:0]} : {attr[6],attr[5:3]};
-		'b110: index = {pixel3hi, shift[30], shift[31]};
+		'b110: index = {m3_idx, shift[30], shift[31]};
 		'b111: index = shift[31:28];
 	endcase
 end
 
 wire I;
 wire [1:0] R, G, B;
-assign {G[1],R[1],B[1],I,G[0],R[0],B[0]} = (HBlank | VBlank | soff) ? 7'b0 : palette[index];
+assign {G[1],R[1],B[1],I,G[0],R[0],B[0]} = (HBlank | VBlank | soff) ? 7'b0 : clut[index];
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -241,7 +240,7 @@ wire       hpen_sel = (addr[8:0] == 504);
 wire       intl_sel = (addr[7:0] == 249);
 wire       attr_sel = (addr[7:0] == 255);
 
-reg  [6:0] palette[16] = '{'h00, 'h11, 'h22, 'h33, 'h44, 'h55, 'h66, 'h77, 'h00, 'h19, 'h2A, 'h3B, 'h4C, 'h5D, 'h6E, 'h7F};
+reg  [6:0] clut[16] = '{'h00, 'h11, 'h22, 'h33, 'h44, 'h55, 'h66, 'h77, 'h00, 'h19, 'h2A, 'h3B, 'h4C, 'h5D, 'h6E, 'h7F};
 
 always @(posedge clk_sys) begin
 	reg old_we;
@@ -251,7 +250,7 @@ always @(posedge clk_sys) begin
 		old_we <= port_we;
 		if(~old_we & port_we) begin
 			if(vmpr_sel) vmpr <= din[6:0];
-			if(pal_sel)  palette[addr[11:8]] <= din[6:0];
+			if(pal_sel)  clut[addr[11:8]] <= din[6:0];
 			if(intl_sel) INT_line_no <= din;
 		end
 	end
