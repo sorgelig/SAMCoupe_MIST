@@ -166,7 +166,7 @@ always @(posedge clk_sys) begin
 		if(hc == 76)  HSync  <= 0;
 		if(hc == 108) HBlank <= 0;
 
-		if((vc == 236) & (hc == 24))  VBlank <= 1;
+		if((vc == 236) & (hc == 28))  VBlank <= 1;
 		if( vc == 240) VSync  <= 1;
 		if( vc == 244) VSync  <= 0;
 		if((vc == 260) & (hc == 104)) VBlank <= 0;
@@ -188,18 +188,9 @@ always @(posedge clk_sys) begin
 			fetch <= ~soff;
 			if(~soff) begin
 				case(mode)
-					0: begin
-							vaddr1 <= {page, 1'b0, vc[7:6],vc[2:0],vc[5:3],col};
-							vaddr2 <= {page, 4'b0110,vc[7:3],col};
-						end
-					1: begin
-							vaddr1 <= {page, 1'b0, vc[7:0],col};
-							vaddr2 <= {page, 1'b1, vc[7:0],col};
-						end
-					2,3: begin
-							vaddr1 <= {page[4:1], vc[7:0],col, 2'b00};
-							vaddr2 <= {page[4:1], vc[7:0],col, 2'b10};
-						end
+					0: {vaddr1,vaddr2} <= { {page, 1'b0, vc[7:6],vc[2:0],vc[5:3],col}, {page, 4'b0110,vc[7:3],col}     };
+					1: {vaddr1,vaddr2} <= { {page, 1'b0, vc[7:0],col},                 {page, 1'b1, vc[7:0],col}       };
+				 2,3: {vaddr1,vaddr2} <= { {page[4:1],  vc[7:0],col, 2'b00},          {page[4:1],  vc[7:0],col, 2'b10}};
 				endcase
 			end
 		end
@@ -212,7 +203,7 @@ always @(posedge clk_sys) begin
 
 		//131,139,...383
 		if(~io_contention) begin
-			// due to permanent 1/8 I/O contention only upper 5 bits of lpen are meaningful.
+			// due to permanent 1/8 I/O contention only upper 5 bits of counter are meaningful.
 			lpen <= paper ? {col, 2'b00, index[0]} : {7'h00, index[0]};
 			hpen <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
 		end
