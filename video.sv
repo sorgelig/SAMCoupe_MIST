@@ -69,12 +69,9 @@ module video
 	output        VGA_HS
 );
 
-// Originally should be 0-128, but some offset required for T80
-localparam INT_Start = 4;
-localparam INT_End   = 132;
-
-assign io_contention  = ~&hc[2:0];
-assign mem_contention = (fetch | (!mode & hc[6])) ? ~&hc[2:0] : ~&hc[1:0];
+wire  [2:0] cpu_slot  = 5;
+assign io_contention  = hc[2:0] != cpu_slot;
+assign mem_contention = (fetch | (!mode & hc[6])) ? hc[2:0] != cpu_slot : hc[1:0] != cpu_slot[1:0];
 
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;
@@ -142,6 +139,7 @@ wire [4:0] col = {~hc[7], hc[6:3]};
 
 wire [7:0] lpen;
 reg  [7:0] hpen;
+reg  [3:0] border;
 
 always @(posedge clk_sys) begin
 
@@ -173,9 +171,8 @@ always @(posedge clk_sys) begin
 
 		if(!hc[2:0]) pixel3hi <= mode3_hi;
 
-		if((INT_line_no < 192) & (INT_line_no == vc) & (hc == INT_Start)) INT_line <=1;
-		if((vc == 244) & (hc == INT_Start)) INT_frame <= 1;
-		if(hc == INT_End) {INT_line, INT_frame} <= 0;
+		INT_line  <= (INT_line_no < 192) & (INT_line_no == vc) & (hc<128);
+		INT_frame <= (vc == 244) & (hc<128);
 
 		case(mode)
 			0,1: shift <= shift << 1;
@@ -201,11 +198,11 @@ always @(posedge clk_sys) begin
 			attr  <= fetch ? vram_dout2[7:0] : 8'd0;
 		end
 
-		//131,139,...383
 		if(~io_contention) begin
 			// due to permanent 1/8 I/O contention only upper 5 bits of counter are meaningful.
-			lpen <= paper ? {col, 2'b00, index[0]} : {7'h00, index[0]};
+			lpen <= {{5{paper}} & col, 2'd0, index[0]};
 			hpen <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
+			border <= border_color;
 		end
 	end
 end
@@ -215,7 +212,7 @@ reg  [3:0] index;
 
 always_comb begin
 	casex({paper, mode})
-		'b0XX: index = border_color;
+		'b0XX: index = border;
 		'b10X: index = (shift[31] ^ (attr[7] & flashcnt[4])) ? {attr[6],attr[2:0]} : {attr[6],attr[5:3]};
 		'b110: index = {pixel3hi, shift[30], shift[31]};
 		'b111: index = shift[31:28];
