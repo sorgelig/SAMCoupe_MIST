@@ -356,14 +356,15 @@ end
 
 reg [7:0] asic_dout;
 always_comb begin
-	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd1_sel})
-		'b1XXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
-		'b01XXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
-		'b001XXX: asic_dout = lmpr;
-		'b0001XX: asic_dout = hmpr;
-		'b00001X: asic_dout = vid_dout;
-		'b000001: asic_dout = fdd_dout;
-		'b000000: asic_dout = 8'hFF;
+	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd1_sel, kjoy_sel})
+		'b1XXXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
+		'b01XXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
+		'b001XXXX: asic_dout = lmpr;
+		'b0001XXX: asic_dout = hmpr;
+		'b00001XX: asic_dout = vid_dout;
+		'b000001X: asic_dout = fdd_dout;
+		'b0000001: asic_dout = {2'b00, joystick_0[5:0] | joystick_1[5:0]};
+		'b0000000: asic_dout = 8'hFF;
 	endcase
 end
 
@@ -435,6 +436,7 @@ wire  [2:0] mod;
 wire  [7:0] key_data;
 keyboard kbd( .* );
 
+wire        kjoy_sel = (addr[7:0] == 'h1F);
 wire  [4:0] kbdjoy = key_data[4:0]
 	& (addr[12] ? 5'b11111 : ~{joystick_0[1],  joystick_0[0], joystick_0[2], joystick_0[3], joystick_0[4] | joystick_0[5]})
 	& (addr[11] ? 5'b11111 : ~{joystick_1[4] | joystick_1[5], joystick_1[3], joystick_1[2], joystick_1[0],  joystick_1[1]});
