@@ -346,7 +346,7 @@ always @(posedge clk_sys) begin
 	if(reset) begin
 		lmpr <= 0;
 		hmpr <= 0;
-		brdr <= 'b10000000; // mode 4 + screen off to hide garbage on startup.
+		brdr <= 0;
 	end else begin
 		old_we <= port_we;
 		if(port_we & ~old_we) begin

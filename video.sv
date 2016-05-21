@@ -85,9 +85,9 @@ osd #(10'd10, 10'd0, 3'd4) osd
 (
 	.*,
 	.ce_pix(ce_6mp | ce_6mn),
-	.VGA_Rx({2{R, R && I}}),
-	.VGA_Gx({2{G, G && I}}),
-	.VGA_Bx({2{B, B && I}}),
+	.VGA_Rx({2{R, I}}),
+	.VGA_Gx({2{G, I}}),
+	.VGA_Bx({2{B, I}}),
 	.VGA_R(VGA_Rs),
 	.VGA_G(VGA_Gs),
 	.VGA_B(VGA_Bs),
@@ -145,7 +145,6 @@ always @(posedge clk_sys) begin
 
 	if(ce_6mp) begin
 		if (hc==383) begin
-
 			hc <= 0;
 			if (vc == 311) begin 
 				vc <= 0;
@@ -165,9 +164,9 @@ always @(posedge clk_sys) begin
 		if(hc == 108) HBlank <= 0;
 
 		if((vc == 236) & (hc == 28))  VBlank <= 1;
-		if( vc == 240) VSync  <= 1;
-		if( vc == 244) VSync  <= 0;
-		if((vc == 260) & (hc == 104)) VBlank <= 0;
+		if( vc == 240) VSync <= 1;
+		if( vc == 244) VSync <= 0;
+		if((vc == 260) & (hc == 108)) VBlank <= 0;
 
 		INT_line  <= (INT_line_no < 192) & (INT_line_no == vc) & (hc<128);
 		INT_frame <= (vc == 244) & (hc<128);
@@ -192,14 +191,15 @@ always @(posedge clk_sys) begin
 
 		if(hc[2:0] == 4) begin
 			paper <= fetch;
-			shift <= fetch ? {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]} : 32'd0;
-			attr  <= fetch ? vram_dout2[7:0] : 8'd0;
+			shift <= {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]};
+			attr  <= fetch ? vram_dout2[7:0] : 8'hFF;
+			clut  <= clut_raw;
 		end
 
 		if(~io_contention) begin
 			// due to permanent 1/8 I/O contention only upper 5 bits of counter are meaningful.
-			lpen <= {{5{paper}} & col, 2'd0, index[0]};
-			hpen <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
+			lpen   <= {{5{paper}} & col, 2'd0, index[0]};
+			hpen   <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
 			border <= border_color;
 			m3_idx <= mode3_hi;
 		end
@@ -234,23 +234,24 @@ wire [1:0] mode = vmpr[6:5];
 wire [4:0] page = vmpr[4:0];
 
 wire       vmpr_sel = (addr[7:0] == 252);
-wire       pal_sel  = (addr[7:0] == 248);
+wire       clut_sel = (addr[7:0] == 248);
 wire       lpen_sel = (addr[8:0] == 248);
 wire       hpen_sel = (addr[8:0] == 504);
 wire       intl_sel = (addr[7:0] == 249);
 wire       attr_sel = (addr[7:0] == 255);
 
-reg  [6:0] clut[16] = '{'h00, 'h11, 'h22, 'h33, 'h44, 'h55, 'h66, 'h77, 'h00, 'h19, 'h2A, 'h3B, 'h4C, 'h5D, 'h6E, 'h7F};
+reg  [6:0] clut[16], clut_raw[16];
 
 always @(posedge clk_sys) begin
 	reg old_we;
 	if(reset) begin
-		vmpr <= 'b01100000; // mode 4 + screen off to hide garbage on startup.
+		vmpr <= 0;
+		clut_raw <= '{default:0}; //hide the garbage (and reset screen, alas)
 	end else begin
 		old_we <= port_we;
 		if(~old_we & port_we) begin
 			if(vmpr_sel) vmpr <= din[6:0];
-			if(pal_sel)  clut[addr[11:8]] <= din[6:0];
+			if(clut_sel) clut_raw[addr[11:8]] <= din[6:0];
 			if(intl_sel) INT_line_no <= din;
 		end
 	end
