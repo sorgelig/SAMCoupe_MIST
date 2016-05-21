@@ -98,12 +98,15 @@ architecture rtl of T80pa is
 
 	signal IntCycle_n		: std_logic;
 	signal IORQ				: std_logic;
+	signal IORQ_o			: std_logic;
+	signal IORQ_d			: std_logic;
 	signal NoRead			: std_logic;
 	signal Write			: std_logic;
 	signal MREQ				: std_logic;
 	signal MReq_Inhibit	: std_logic;
 	signal Req_Inhibit	: std_logic;
 	signal RD				: std_logic;
+	signal WR_o 			: std_logic;
 	signal BUSAK			: std_logic;
 	signal DI_Reg			: std_logic_vector (7 downto 0);	-- Input synchroniser
 	signal Wait_s			: std_logic;
@@ -114,8 +117,10 @@ architecture rtl of T80pa is
 begin
 
 	MREQ_n <= not MREQ or (Req_Inhibit and MReq_Inhibit);
-	RD_n <= not RD or Req_Inhibit;
+	RD_n <= not RD or Req_Inhibit when IORQ = '0' else IORQ_d or Write;
 	BUSAK_n <= BUSAK;
+	IORQ_n  <= IORQ_d;
+	WR_n <= WR_o when IORQ = '0' else IORQ_d or not Write; 
 
 	u0 : T80
 		generic map(
@@ -149,28 +154,30 @@ begin
 	begin
 		if CLK'event and CLK = '1' then
 			if RESET_n = '0' then
-				WR_n <= '1';
+				WR_o <= '1';
 				Req_Inhibit <= '0';
 				MReq_Inhibit <= '0';
 				RD <= '0';
-				IORQ_n <= '1';
+				IORQ_d <= '1';
+				IORQ_o <= '1';
 				MREQ <= '0';
 				DI_Reg <= "00000000";
 				Wait_s <= '1';
 				CEN_ne <= '0';
 			elsif CEN_p = '1' then
-				WR_n <= '1';
-				if TState = "001" then
-					WR_n <= not Write;
-				end if;
 				if MCycle = "001" and TState = "010" then
 					Req_Inhibit <= '1';
 				else
 					Req_Inhibit <= '0';
 				end if;
 				CEN_ne <= '1';
+				IORQ_d <= IORQ_o;
 			elsif CEN_n = '1' and CEN_ne = '1' then
-				Wait_s <= WAIT_n;
+				if TState = "010" then
+					Wait_s <= WAIT_n;
+				else
+					Wait_s <= '1';
+				end if;
 				if TState = "011" and BUSAK = '1' then
 					DI_Reg <= DI;
 				end if;
@@ -183,26 +190,32 @@ begin
 					if TState = "001" then
 						RD <= IntCycle_n;
 						MREQ <= IntCycle_n;
-						IORQ_n <= IntCycle_n;
+						IORQ_o <= IntCycle_n;
 					end if;
 					if TState = "011" then
 						RD <= '0';
-						IORQ_n <= '1';
+						IORQ_d <= '1';
+						IORQ_o <= '1';
 						MREQ <= '1';
 					end if;
 					if TState = "100" then
 						MREQ <= '0';
 					end if;
 				else
+					if TState = "010" then
+						WR_o <= not Write;
+					end if;
 					if TState = "001" and NoRead = '0' then
 						RD <= not Write;
-						IORQ_n <= not IORQ;
+						IORQ_o <= not IORQ;
 						MREQ <= not IORQ;
 					end if;
 					if TState = "011" then
 						RD <= '0';
-						IORQ_n <= '1';
+						IORQ_d <= '1';
+						IORQ_o <= '1';
 						MREQ <= '0';
+						WR_o <= '1';
 					end if;
 				end if;
 			end if;
