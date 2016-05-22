@@ -351,7 +351,7 @@ always @(posedge clk_sys or posedge reset) begin
 							data_rdlength <= sector_size;
 							read_type <=1;
 
-							if(size_code == 5) begin
+							if(size_code >= 5) begin
 								pending_state <= STATE_WAIT_READ;
 								state <= STATE_SDF_SEARCH;
 							end else begin
@@ -382,7 +382,7 @@ always @(posedge clk_sys or posedge reset) begin
 							data_rdlength <= 6;
 							read_type <= 0;
 
-							if(size_code == 5) begin
+							if(size_code >= 5) begin
 								read_addr[0] <= sdf_track;
 								read_addr[1] <= {7'b0, sdf_side};
 								read_addr[2] <= sdf_sector;
@@ -494,7 +494,7 @@ always @(posedge clk_sys or posedge reset) begin
 						if (wdstat_multisector) begin
 							wdstat_sector <= wdstat_sector + 1'b1;
 							data_rdlength <= sector_size;
-							if(size_code == 5) begin
+							if(size_code >= 5) begin
 								pending_state <= STATE_WAIT_READ;
 								state <= STATE_SDF_SEARCH;
 							end else begin
@@ -586,7 +586,7 @@ always @(posedge clk_sys or posedge reset) begin
 	end
 end
 
-reg  [1:0] sdf_sizecode;      // sector size: 0=128K, 1=256K, 2=512K, 3=1024K (only 512 or 1024 supported)
+reg  [1:0] sdf_sizecode;      // sector size: 0=128K, 1=256K, 2=512K, 3=1024K
 reg        sdf_side;          // Side number (0 or 1)
 reg  [6:0] sdf_track;         // Track number
 reg  [7:0] sdf_sector;        // Sector number 0..15
@@ -609,7 +609,7 @@ end
 
 always @(posedge clk_sys) begin
 	reg old_active, old_wr;
-	reg [13:0] hdr_pos, bcnt, track_pos;
+	reg [13:0] hdr_pos, bcnt;
 	reg  [7:0] idStatus;
    reg  [6:0] track;
    reg        side;
@@ -618,58 +618,109 @@ always @(posedge clk_sys) begin
    reg  [7:0] crc1;
    reg  [7:0] crc2;
 	reg  [7:0] sectors;
+	reg        is_sdf;
+	reg  [7:0] tsize[166];
+	reg [15:0] track_size, track_pos;
+	reg [19:0] offset;
+	reg  [7:0] size_lo;
+	reg  [7:0] pos;
 
 	old_active <= input_active;
 	if(input_active & ~old_active) begin
 		sdf_size  <=0;
 		spt_size  <=0;
 		track_pos <=0;
+		is_sdf    <=0;
 	end
 
 	old_wr <= input_wr;
 	if(input_wr & ~old_wr & input_active) begin
-		track_pos <= track_pos + 1'b1;
-		if(track_pos == 6143) track_pos <= 0;
+		if((!input_addr && (input_data != 'h45)) | is_sdf) begin
+			is_sdf <= 1;
+			track_pos <= track_pos + 1'b1;
+			if(track_pos == 6143) track_pos <= 0;
 
-		if(!track_pos) begin
-			sectors <= input_data;
-			spt[spt_size] <= input_data;
-			spt_size <= spt_size + 1'd1;
-			hdr_pos <= 0;
-			bcnt    <= 0;
-		end else if(sectors) begin
-			hdr_pos <= hdr_pos + 1'd1;
-			case(hdr_pos)
-				0: idStatus <= input_data;
-				1: /*dataStatus <= input_data*/;
-				2: track <= input_data[6:0];
-				3: side <= input_data[0];
-				4: sector <= input_data;
-				5: sizecode <= input_data[1:0];
-				6: crc1 <= input_data;
-				7: begin
-						if(idStatus != 0) begin 
+			if(!track_pos) begin
+				sectors <= input_data;
+				spt[spt_size] <= input_data;
+				spt_size <= spt_size + 1'd1;
+				hdr_pos <= 0;
+				bcnt    <= 0;
+			end else if(sectors) begin
+				hdr_pos <= hdr_pos + 1'd1;
+				case(hdr_pos)
+					0: idStatus <= input_data;
+					1: /*dataStatus <= input_data*/;
+					2: track <= input_data[6:0];
+					3: side <= input_data[0];
+					4: sector <= input_data;
+					5: sizecode <= input_data[1:0];
+					6: crc1 <= input_data;
+					7: begin
+							if(idStatus != 0) begin 
+								sectors <= sectors - 1'd1;
+								hdr_pos <= 0;
+								sdf[sdf_size] <= {track,side,sector,sizecode,crc1,input_data,20'd0};
+								sdf_size <= sdf_size + 1'd1;
+							end
+							crc2 <= input_data;
+							bcnt <= 11'd128 << sizecode;
+						end
+					8: begin
+							sdf[sdf_size] <= {track,side,sector,sizecode,crc1,crc2,input_addr};
+							sdf_size <= sdf_size + 1'd1;
+							bcnt     <= bcnt - 1'd1;
+						end
+					default: begin
+						bcnt <= bcnt - 1'd1;
+						if(bcnt == 1) begin
 							sectors <= sectors - 1'd1;
 							hdr_pos <= 0;
-							sdf[sdf_size] <= {track,side,sector,sizecode,crc1,input_data,20'd0};
-							sdf_size <= sdf_size + 1'd1;
 						end
-						crc2 <= input_data;
-						bcnt <= 11'd128 << sizecode;
 					end
-				8: begin
-						sdf[sdf_size] <= {track,side,sector,sizecode,crc1,crc2,input_addr};
-						sdf_size <= sdf_size + 1'd1;
-						bcnt     <= bcnt - 1'd1;
-					end
-				default: begin
-					bcnt <= bcnt - 1'd1;
-					if(bcnt == 1) begin
-						sectors <= sectors - 1'd1;
-						hdr_pos <= 0;
-					end
+				endcase
+			end
+		end else begin
+			if( input_addr == 48) spt_size <= input_data; else
+			if((input_addr == 49) & (input_data == 2)) spt_size <= spt_size << 1; else
+			if( input_addr == 52) begin
+				track_size <= {input_data, 8'd0};
+				track_pos  <= 0;
+				pos <= 1;
+			end else
+			if((input_addr  > 52) & (input_addr < 218)) begin
+				tsize[input_addr - 52] <= input_data;
+				spt[input_addr - 52] <= 0;
+			end else 
+			if((input_addr >= 256) && track_size) begin
+				track_pos <= track_pos + 1'd1;
+				case(track_pos)
+					00: offset  <= input_addr + 9'd256;
+					16: track   <= input_data[6:0];
+					17: side    <= input_data[0];
+					21: sectors <= input_data;
+					22: spt[(side ? (spt_size >> 1) : 8'd0) + track] <= sectors;
+					default:
+						if((track_pos >= 24) && sectors) begin
+							case(track_pos[2:0])
+								2: sector <= input_data;
+								3: sdf[sdf_size] <= {track,side,sector,input_data[1:0],8'd0,8'd0,offset};
+								4:	sdf_size <= sdf_size + 1'd1;
+								6: size_lo <= input_data;
+								7: begin
+										offset <= offset + {input_data, size_lo};
+										sectors <= sectors - 1'd1;
+									end
+								default:;
+							endcase
+						end
+				endcase
+				if(track_pos >= (track_size - 1'd1)) begin
+					track_size <= {tsize[pos], 8'd0};
+					track_pos  <= 0;
+					pos <= pos + 1'd1;
 				end
-			endcase
+			end
 		end
 	end
 end

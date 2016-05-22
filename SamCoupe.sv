@@ -501,23 +501,37 @@ wire        fdd_read = fdd_rd & fdd_sel;
 wire  [7:0] fdd_dout;
 reg   [2:0] fdd_type;
 
+wire[127:0] edsk_sig = "EXTENDED CPC DSK";
+wire[127:0] sig_pos  = edsk_sig >> (8'd120-(ioctl_addr[7:0]<<3));
+
 always @(posedge clk_sys) begin
-	reg old_wr;
+	reg old_wr, old_wr2;
 	reg old_download;
 	reg old_m1;
+	reg edsk;
 
 	old_wr <= nWR;
 	if(old_wr & ~nWR & fdd_sel) fdd_side <= addr[2];
 
+	old_wr2 <= ioctl_wr;
 	old_download <= ioctl_download;
 	if(cold_reset) begin
 		fdd_ready <= 0;
 		fdd_size  <= 0;
 	end else begin
+		if(~old_download & ioctl_download & (ioctl_index == 1)) begin
+			edsk <= 1;
+		end
+
+		if(~old_wr2 & ioctl_wr & ioctl_download & (ioctl_index == 1)) begin
+			if((ioctl_addr[19:0] < 16) & (sig_pos[7:0] != ioctl_dout)) edsk <= 0;
+		end
+
 		if(~ioctl_download & old_download & (ioctl_index == 1)) begin
 			fdd_ready <= 1;
 			fdd_size  <= ioctl_addr[19:0] + 1'b1;
-			if((ioctl_addr[19:0] == 983039) | (ioctl_addr[19:0] == 1019903)) fdd_type <= 5;
+			if(edsk) fdd_type <= 6;
+			else if((ioctl_addr[19:0] == 983039) | (ioctl_addr[19:0] == 1019903)) fdd_type <= 5;
 			else fdd_type <= 4;
 		end
 	end
