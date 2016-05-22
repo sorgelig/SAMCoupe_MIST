@@ -439,8 +439,8 @@ always@(posedge SPI_SCK, posedge SPI_SS2) begin
 			// prepare 
 			if(SPI_DI) begin
 				case(ioctl_index) 
-							1: addr <= 25'h500000; // disk buffer at 5MB
-						 2,3: addr <= 25'h700000; // tape buffer at 7MB
+						 1,2: addr <= 25'h500000; // disk buffer at 5MB
+						   3: addr <= 25'h700000; // tape buffer at 7MB
 					default: addr <= 25'h080000; // boot rom at 512KB
 				endcase
 				ioctl_download <= 1;
@@ -471,16 +471,15 @@ always@(posedge clk_sys) begin
 	reg  [5:0] erase_clk_div;
 	reg [24:0] end_addr;
 	reg        erase_trigger = 0;
-	integer    wr;
 
 	rclkD    <= rclk;
 	rclkD2   <= rclkD;
-	{ioctl_wr, wr} <= {wr, 1'b0};
+	ioctl_wr <= 0;
 
 	if(rclkD & ~rclkD2) begin
 		ioctl_dout <= data_w;
 		ioctl_addr <= addr_w;
-		wr <= -1;
+		ioctl_wr   <= 1;
 	end
 
 	if(ioctl_download) begin
@@ -504,7 +503,7 @@ always@(posedge clk_sys) begin
 				else begin
 					ioctl_addr <= next_erase;
 					ioctl_dout <= 0;
-					wr <= -1;
+					ioctl_wr   <= 1;
 				end
 			end
 		end

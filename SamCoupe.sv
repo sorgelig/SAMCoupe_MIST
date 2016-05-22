@@ -171,12 +171,12 @@ wire        ioctl_erasing;
 wire  [4:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
-mist_io #(.STRLEN(60)) user_io
+mist_io #(.STRLEN(67)) user_io
 (
 	.*,
 	.conf_str
 	(
-        "SAMCOUPE;DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real"
+        "SAMCOUPE;DSK;F3,SDF;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real"
 	),
 
 	// unused
@@ -499,6 +499,7 @@ reg         fdd_side;
 wire        fdd_sel  = fdd1_sel & ~nIORQ & nM1;
 wire        fdd_read = fdd_rd & fdd_sel;
 wire  [7:0] fdd_dout;
+reg   [2:0] fdd_type;
 
 always @(posedge clk_sys) begin
 	reg old_wr;
@@ -513,9 +514,17 @@ always @(posedge clk_sys) begin
 		fdd_ready <= 0;
 		fdd_size  <= 0;
 	end else begin
-		if(~ioctl_download & old_download & (ioctl_index == 1)) begin
-			fdd_ready <= 1;
-			fdd_size  <= ioctl_addr[19:0] + 1'b1;
+		if(~ioctl_download & old_download) begin
+			if(ioctl_index == 1) begin
+				fdd_ready <= 1;
+				fdd_size  <= ioctl_addr[19:0] + 1'b1;
+				fdd_type  <= 4;
+			end
+			if(ioctl_index == 2) begin
+				fdd_ready <= 1;
+				fdd_size  <= ioctl_addr[19:0] + 1'b1;
+				fdd_type  <= 5;
+			end
 		end
 	end
 end
@@ -531,16 +540,20 @@ wd1793 fdd
 	.addr(addr[1:0]),
 	.din(cpu_dout),
 	.dout(fdd_dout),
-	
+
+	.input_active(ioctl_download & (ioctl_index == 2)),
+	.input_addr(ioctl_addr[19:0]),
+	.input_data(ioctl_dout),
+	.input_wr(ioctl_wr),
+
 	.buff_size(fdd_size),
 	.buff_addr(fdd_addr),
 	.buff_read(fdd_rd),
 	.buff_din(ram_dout),
 
-	.size_code(4),
+	.size_code(fdd_type),
 	.side(fdd_side),
 	.ready(fdd_ready)
 );
-
 
 endmodule

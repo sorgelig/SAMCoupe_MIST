@@ -40,6 +40,11 @@ module wd1793
 	output       intrq,
 	output       busy,
 
+	input        input_active,
+	input [19:0] input_addr,
+	input  [7:0] input_data,
+	input        input_wr,
+	
 	// Sector buffer access signals
 	input [19:0] buff_size,	 // buffer RAM size (currently not used)
 	output[19:0] buff_addr,	 // buffer RAM address
@@ -70,11 +75,11 @@ assign buff_read  = ((addr == A_DATA) && buff_rd);
 assign buff_write = ((addr == A_DATA) && buff_wr);
 assign buff_dout  = din;
 
-reg   [7:0] sectors_per_track;
-reg  [10:0] sector_size;
+reg   [7:0] sectors_per_track, sectors_per_track_var;
+wire [10:0] sector_size = 11'd128 << wd_size_code;
 reg   [9:0] byte_addr;
 reg  [19:0] buff_a;
-wire  [1:0] wd_size_code = (size_code == 4) ? 2'd2 : size_code[1:0];
+reg   [1:0] wd_size_code;
 
 wire  [7:0] dts = {disk_track[6:0], side};
 always @* begin
@@ -83,21 +88,24 @@ always @* begin
 				1: buff_a = {{dts, 4'b0000}       + wdstat_sector - 1'd1, byte_addr[7:0]};
 				2: buff_a = {{dts, 3'b000}  + dts + wdstat_sector - 1'd1, byte_addr[8:0]};
 				3: buff_a = {{dts, 2'b00}   + dts + wdstat_sector - 1'd1, byte_addr[9:0]};
-		default: buff_a = {{dts, 3'b000}  + {dts, 1'b0} + wdstat_sector - 1'd1, byte_addr[8:0]};
+				4: buff_a = {{dts, 3'b000}  + {dts, 1'b0} + wdstat_sector - 1'd1, byte_addr[8:0]};
+		default: buff_a = sdf_offset + byte_addr;
 	endcase
 	case(size_code)
 				0: sectors_per_track = 26;
 				1: sectors_per_track = 16;
 				2: sectors_per_track = 9;
 				3: sectors_per_track = 5;
-		default: sectors_per_track = 10;
+				4: sectors_per_track = 10;
+		default: sectors_per_track = sectors_per_track_var;
 	endcase
 	case(size_code)
-				0: sector_size = 128;
-				1: sector_size = 256;
-				2: sector_size = 512;
-				3: sector_size = 1024;
-		default: sector_size = 512;
+				0: wd_size_code = 0;
+				1: wd_size_code = 1;
+				2: wd_size_code = 2;
+				3: wd_size_code = 3;
+				4: wd_size_code = 2;
+		default: wd_size_code = sdf_sizecode;
 	endcase
 end
 
@@ -123,6 +131,8 @@ parameter STATE_WRITESECT   = 10; /* Host-to-buffer: wait data from host -> STAT
 parameter STATE_READSECT    = 11; /* Buffer-to-host */
 parameter STATE_WAIT_2      = 12;
 parameter STATE_ENDCOMMAND  = 14; /* All commands end here -> STATE_ENDCOMMAND2 */
+parameter STATE_SDF_SEARCH  = 15;
+parameter STATE_SDF_SEARCH_1= 16;
 
 // State variables
 reg   [7:0] wdstat_track;
@@ -135,7 +145,7 @@ reg			wdstat_multisector;		// indicates multisector mode
 
 reg   [7:0] disk_track;					// "real" heads position
 reg  [10:0]	data_rdlength;				// this many bytes to transfer during read/write ops
-reg   [3:0] state;
+reg   [4:0] state, pending_state;
 
 // common status bits
 reg			s_readonly = 0, s_crcerr;
@@ -339,8 +349,14 @@ always @(posedge clk_sys or posedge reset) begin
 							
 							wdstat_multisector <= wdstat_command[4];
 							data_rdlength <= sector_size;
-							state <= STATE_WAIT_READ;
 							read_type <=1;
+
+							if(size_code == 5) begin
+								pending_state <= STATE_WAIT_READ;
+								state <= STATE_SDF_SEARCH;
+							end else begin
+								state <= STATE_WAIT_READ;
+							end
 						end
 					4'hA, 4'hB: // WRITE SECTORS
 						begin
@@ -366,12 +382,21 @@ always @(posedge clk_sys or posedge reset) begin
 							data_rdlength <= 6;
 							read_type <= 0;
 
-							read_addr[0] <= disk_track;
-							read_addr[1] <= {7'b0, side};
-							read_addr[2] <= wdstat_sector;
-							read_addr[3] <= wd_size_code;
-							read_addr[4] <= 0;
-							read_addr[5] <= 0;
+							if(size_code == 5) begin
+								read_addr[0] <= sdf_track;
+								read_addr[1] <= {7'b0, sdf_side};
+								read_addr[2] <= sdf_sector;
+								read_addr[3] <= sdf_sizecode;
+								read_addr[4] <= sdf_crc1;
+								read_addr[5] <= sdf_crc2;
+							end else begin
+								read_addr[0] <= disk_track;
+								read_addr[1] <= {7'b0, side};
+								read_addr[2] <= wdstat_sector;
+								read_addr[3] <= wd_size_code;
+								read_addr[4] <= 0;
+								read_addr[5] <= 0;
+							end
 						end
 					4'hE,	// READ TRACK
 					4'hF:	// WRITE TRACK
@@ -383,6 +408,29 @@ always @(posedge clk_sys or posedge reset) begin
 						end
 					default:s_drq_busy <= 2'b00;
 					endcase
+				end
+			end
+
+		STATE_SDF_SEARCH:
+			begin
+				sdf_addr <= 0;
+				state    <= STATE_SDF_SEARCH_1;
+				spt_addr <= (side ? spt_size>>1 : 8'd0) + disk_track;
+			end
+
+		STATE_SDF_SEARCH_1:
+			begin
+				if(sdf_addr >= sdf_size) begin
+					state <= STATE_WAIT;
+					s_seekerr <= 1;
+				end else 
+				if((sdf_track == disk_track) & 
+					(sdf_side == side) &
+					(sdf_sector == wdstat_sector)) begin
+						state <= pending_state;
+					end
+				else begin
+					sdf_addr <= sdf_addr + 1'b1;
 				end
 			end
 
@@ -436,13 +484,6 @@ always @(posedge clk_sys or posedge reset) begin
 			end
 		STATE_READSECT:
 			begin
-				// lose data if not requested in time
-				//if (s_drq && watchdog_bark) begin
-				//	s_lostdata <= 1'b1;
-				//	s_drq_busy <= 2'b01;
-				//	state <= data_rdlength != 0 ? STATE_READ_1 : STATE_ABORT;
-				//end
-
 				if(watchdog_bark || (read_data && s_drq)) begin
 					// reset drq until next byte is read, nothing is lost
 					s_drq_busy <= 2'b01;
@@ -453,7 +494,12 @@ always @(posedge clk_sys or posedge reset) begin
 						if (wdstat_multisector) begin
 							wdstat_sector <= wdstat_sector + 1'b1;
 							data_rdlength <= sector_size;
-							state <= STATE_WAIT_READ;
+							if(size_code == 5) begin
+								pending_state <= STATE_WAIT_READ;
+								state <= STATE_SDF_SEARCH;
+							end else begin
+								state <= STATE_WAIT_READ;
+							end
 						end else begin
 							if(wdstat_multisector) s_seekerr <= 1;
 							wdstat_multisector <= 0;
@@ -539,8 +585,96 @@ always @(posedge clk_sys or posedge reset) begin
 		endcase
 	end
 end
-endmodule
 
+reg  [1:0] sdf_sizecode;      // sector size: 0=128K, 1=256K, 2=512K, 3=1024K (only 512 or 1024 supported)
+reg        sdf_side;          // Side number (0 or 1)
+reg  [6:0] sdf_track;         // Track number
+reg  [7:0] sdf_sector;        // Sector number 0..15
+reg  [7:0] sdf_crc1;          // ID field CRC MSB
+reg  [7:0] sdf_crc2;          // ID field CRC LSB
+reg [19:0] sdf_offset;
+
+reg [10:0] sdf_size;
+reg [10:0] sdf_addr;
+reg [53:0] sdf[1992];
+
+reg  [7:0] spt_size;
+reg  [7:0] spt_addr;
+reg  [7:0] spt[166];
+
+always @(posedge clk_sys) begin
+	{sdf_track,sdf_side,sdf_sector,sdf_sizecode,sdf_crc1,sdf_crc2,sdf_offset} <= sdf[sdf_addr];
+	sectors_per_track_var <= spt[spt_addr];
+end
+
+always @(posedge clk_sys) begin
+	reg old_active, old_wr;
+	reg [13:0] hdr_pos, bcnt, track_pos;
+	reg  [7:0] idStatus;
+   reg  [6:0] track;
+   reg        side;
+   reg  [7:0] sector;
+   reg  [1:0] sizecode;
+   reg  [7:0] crc1;
+   reg  [7:0] crc2;
+	reg  [7:0] sectors;
+
+	old_active <= input_active;
+	if(input_active & ~old_active) begin
+		sdf_size  <=0;
+		spt_size  <=0;
+		track_pos <=0;
+	end
+
+	old_wr <= input_wr;
+	if(input_wr & ~old_wr & input_active) begin
+		track_pos <= track_pos + 1'b1;
+		if(track_pos == 6143) track_pos <= 0;
+
+		if(!track_pos) begin
+			sectors <= input_data;
+			spt[spt_size] <= input_data;
+			spt_size <= spt_size + 1'd1;
+			hdr_pos <= 0;
+			bcnt    <= 0;
+		end else if(sectors) begin
+			hdr_pos <= hdr_pos + 1'd1;
+			case(hdr_pos)
+				0: idStatus <= input_data;
+				1: /*dataStatus <= input_data*/;
+				2: track <= input_data[6:0];
+				3: side <= input_data[0];
+				4: sector <= input_data;
+				5: sizecode <= input_data[1:0];
+				6: crc1 <= input_data;
+				7: begin
+						if(idStatus != 0) begin 
+							sectors <= sectors - 1'd1;
+							hdr_pos <= 0;
+							sdf[sdf_size] <= {track,side,sector,sizecode,crc1,input_data,20'd0};
+							sdf_size <= sdf_size + 1'd1;
+						end
+						crc2 <= input_data;
+						bcnt <= 11'd128 << sizecode;
+					end
+				8: begin
+						sdf[sdf_size] <= {track,side,sector,sizecode,crc1,crc2,input_addr};
+						sdf_size <= sdf_size + 1'd1;
+						bcnt     <= bcnt - 1'd1;
+					end
+				default: begin
+					bcnt <= bcnt - 1'd1;
+					if(bcnt == 1) begin
+						sectors <= sectors - 1'd1;
+						hdr_pos <= 0;
+					end
+				end
+			endcase
+		end
+	end
+end
+
+endmodule
 
 // start ticking when cock goes down
 module watchdog
