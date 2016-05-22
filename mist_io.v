@@ -439,8 +439,9 @@ always@(posedge SPI_SCK, posedge SPI_SS2) begin
 			// prepare 
 			if(SPI_DI) begin
 				case(ioctl_index) 
-						 1,2: addr <= 25'h500000; // disk buffer at 5MB
-						   3: addr <= 25'h700000; // tape buffer at 7MB
+							1: addr <= 25'h500000; // disk1 buffer at 5MB
+							2: addr <= 25'h600000; // disk2 buffer at 6MB
+							3: addr <= 25'h700000; // tape buffer at 7MB
 					default: addr <= 25'h080000; // boot rom at 512KB
 				endcase
 				ioctl_download <= 1;

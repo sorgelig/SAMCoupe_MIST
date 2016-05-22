@@ -56,7 +56,7 @@ module SamCoupe
    output        SDRAM_CKE
 );
 
-assign LED = ~(ioctl_erasing | ioctl_download | fdd_sel);
+assign LED = ~(ioctl_erasing | ioctl_download | fdd_io);
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -171,12 +171,12 @@ wire        ioctl_erasing;
 wire  [4:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
-mist_io #(.STRLEN(60)) user_io
+mist_io #(.STRLEN(67)) user_io
 (
 	.*,
 	.conf_str
 	(
-        "SAMCOUPE;DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real"
+        "SAMCOUPE;DSK;F3,DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real"
 	),
 
 	// unused
@@ -259,7 +259,7 @@ end
 reg  [24:0] ram_addr;
 always_comb begin
 	casex({fdd_read, rom0_sel | rom1_sel, ext_ram, addr[15:14]})
-		'b1XX_XX: ram_addr = {3'd5, fdd_addr};
+		'b1XX_XX: ram_addr = fdd_addr;
 		'b01X_XX: ram_addr = {5'h10,addr[15], addr[13:0]};
 		'b001_X0: ram_addr = {ext_c_off,      addr[13:0]};
 		'b001_X1: ram_addr = {ext_d_off,      addr[13:0]};
@@ -338,7 +338,7 @@ wire       hmpr_sel = (addr[7:0] == 251);
 wire       kbdr_sel = (addr[7:0] == 254);
 wire       brdr_sel = (addr[7:0] == 254);
 wire       fdd1_sel = (addr[7:0] >= 224) & (addr[7:0] <= 231);
-//wire       fdd2_sel = (addr[7:0] >= 240) & (addr[7:0] <= 247);
+wire       fdd2_sel = (addr[7:0] >= 240) & (addr[7:0] <= 247);
 
 always @(posedge clk_sys) begin
 	reg old_we;
@@ -359,7 +359,7 @@ end
 
 reg [7:0] asic_dout;
 always_comb begin
-	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd1_sel, kjoy_sel, addr[14] & zxpsg_sel})
+	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel, addr[14] & zxpsg_sel})
 		'b1XXXXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
 		'b01XXXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
 		'b001XXXXX: asic_dout = lmpr;
@@ -491,18 +491,26 @@ wire  [4:0] kbdjoy = key_data[4:0]
 
 
 ///////////////////   FDC   ///////////////////
-wire [19:0] fdd_addr;
-wire [19:0] fdd_size;
-wire        fdd_rd;
-reg         fdd_ready;
-reg         fdd_side;
-wire        fdd_sel  = fdd1_sel & ~nIORQ & nM1;
-wire        fdd_read = fdd_rd & fdd_sel;
-wire  [7:0] fdd_dout;
-reg   [2:0] fdd_type;
+wire        fdd_sel  = fdd1_sel  | fdd2_sel;
+wire        fdd_io   = fdd1_io   | fdd2_io;
+wire        fdd_read = fdd1_read | fdd2_read;
+wire [24:0] fdd_addr = fdd1_sel ? {3'd5, fdd1_addr} : {3'd6, fdd2_addr};
+wire  [7:0] fdd_dout = fdd1_sel ? fdd1_dout : fdd2_dout;
 
 wire[127:0] edsk_sig = "EXTENDED CPC DSK";
 wire[127:0] sig_pos  = edsk_sig >> (8'd120-(ioctl_addr[7:0]<<3));
+wire        is_sdf   = ((ioctl_addr[19:0] == 983039) | (ioctl_addr[19:0] == 1019903));
+
+// FDD1
+wire [19:0] fdd1_addr;
+wire [19:0] fdd1_size;
+wire        fdd1_rd;
+reg         fdd1_ready;
+reg         fdd1_side;
+wire        fdd1_io   = fdd1_sel & ~nIORQ & nM1;
+wire        fdd1_read = fdd1_rd & fdd1_io;
+wire  [7:0] fdd1_dout;
+reg   [2:0] fdd1_type;
 
 always @(posedge clk_sys) begin
 	reg old_wr, old_wr2;
@@ -511,57 +519,122 @@ always @(posedge clk_sys) begin
 	reg edsk;
 
 	old_wr <= nWR;
-	if(old_wr & ~nWR & fdd_sel) fdd_side <= addr[2];
+	if(old_wr & ~nWR & fdd1_io) fdd1_side <= addr[2];
 
 	old_wr2 <= ioctl_wr;
 	old_download <= ioctl_download;
 	if(cold_reset) begin
-		fdd_ready <= 0;
-		fdd_size  <= 0;
+		fdd1_ready <= 0;
+		fdd1_size  <= 0;
 	end else begin
-		if(~old_download & ioctl_download & (ioctl_index == 1)) begin
-			edsk <= 1;
-		end
+		if(~old_download & ioctl_download & (ioctl_index == 1)) edsk <= 1;
 
-		if(~old_wr2 & ioctl_wr & ioctl_download & (ioctl_index == 1)) begin
-			if((ioctl_addr[19:0] < 16) & (sig_pos[7:0] != ioctl_dout)) edsk <= 0;
-		end
+		if(~old_wr2 & ioctl_wr & ioctl_download & (ioctl_index == 1) & 
+			(ioctl_addr[19:0] < 16) & (sig_pos[7:0] != ioctl_dout)) edsk <= 0;
 
 		if(~ioctl_download & old_download & (ioctl_index == 1)) begin
-			fdd_ready <= 1;
-			fdd_size  <= ioctl_addr[19:0] + 1'b1;
-			if(edsk) fdd_type <= 6;
-			else if((ioctl_addr[19:0] == 983039) | (ioctl_addr[19:0] == 1019903)) fdd_type <= 5;
-			else fdd_type <= 4;
+			fdd1_ready <= 1;
+			fdd1_size  <= ioctl_addr[19:0] + 1'b1;
+			if(edsk) fdd1_type <= 6;
+			else if(is_sdf) fdd1_type <= 5;
+			else fdd1_type <= 4;
 		end
 	end
 end
 
-wd1793 fdd
+wd1793 fdd1
 (
 	.clk_sys(clk_sys),
 	.ce(cpu_n),
 	.reset(reset),
-	.io_en(fdd_sel),
+	.io_en(fdd1_io),
 	.rd(~nRD),
 	.wr(~nWR),
 	.addr(addr[1:0]),
 	.din(cpu_dout),
-	.dout(fdd_dout),
+	.dout(fdd1_dout),
 
-	.input_active(ioctl_download),
+	.input_active(ioctl_download & (ioctl_index == 1)),
 	.input_addr(ioctl_addr[19:0]),
 	.input_data(ioctl_dout),
 	.input_wr(ioctl_wr),
 
-	.buff_size(fdd_size),
-	.buff_addr(fdd_addr),
-	.buff_read(fdd_rd),
+	.buff_size(fdd1_size),
+	.buff_addr(fdd1_addr),
+	.buff_read(fdd1_rd),
 	.buff_din(ram_dout),
 
-	.size_code(fdd_type),
-	.side(fdd_side),
-	.ready(fdd_ready)
+	.size_code(fdd1_type),
+	.side(fdd1_side),
+	.ready(fdd1_ready)
+);
+
+// FDD2
+wire [19:0] fdd2_addr;
+wire [19:0] fdd2_size;
+wire        fdd2_rd;
+reg         fdd2_ready;
+reg         fdd2_side;
+wire        fdd2_io   = fdd2_sel & ~nIORQ & nM1;
+wire        fdd2_read = fdd2_rd & fdd2_io;
+wire  [7:0] fdd2_dout;
+reg   [2:0] fdd2_type;
+
+always @(posedge clk_sys) begin
+	reg old_wr, old_wr2;
+	reg old_download;
+	reg old_m1;
+	reg edsk;
+
+	old_wr <= nWR;
+	if(old_wr & ~nWR & fdd2_io) fdd2_side <= addr[2];
+
+	old_wr2 <= ioctl_wr;
+	old_download <= ioctl_download;
+	if(cold_reset) begin
+		fdd2_ready <= 0;
+		fdd2_size  <= 0;
+	end else begin
+		if(~old_download & ioctl_download & (ioctl_index == 2)) edsk <= 1;
+
+		if(~old_wr2 & ioctl_wr & ioctl_download & (ioctl_index == 2) & 
+			(ioctl_addr[19:0] < 16) & (sig_pos[7:0] != ioctl_dout)) edsk <= 0;
+
+		if(~ioctl_download & old_download & (ioctl_index == 2)) begin
+			fdd2_ready <= 1;
+			fdd2_size  <= ioctl_addr[19:0] + 1'b1;
+			if(edsk) fdd2_type <= 6;
+			else if(is_sdf) fdd2_type <= 5;
+			else fdd2_type <= 4;
+		end
+	end
+end
+
+wd1793 fdd2
+(
+	.clk_sys(clk_sys),
+	.ce(cpu_n),
+	.reset(reset),
+	.io_en(fdd2_io),
+	.rd(~nRD),
+	.wr(~nWR),
+	.addr(addr[1:0]),
+	.din(cpu_dout),
+	.dout(fdd2_dout),
+
+	.input_active(ioctl_download & (ioctl_index == 2)),
+	.input_addr(ioctl_addr[19:0]),
+	.input_data(ioctl_dout),
+	.input_wr(ioctl_wr),
+
+	.buff_size(fdd2_size),
+	.buff_addr(fdd2_addr),
+	.buff_read(fdd2_rd),
+	.buff_din(ram_dout),
+
+	.size_code(fdd2_type),
+	.side(fdd2_side),
+	.ready(fdd2_ready)
 );
 
 endmodule
