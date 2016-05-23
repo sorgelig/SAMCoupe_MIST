@@ -31,7 +31,8 @@ There is only basic support SDF and EDSK formats. If application has specific co
 
 **All formats share the same file extension - DSK**. If you have one of supported format with extensions like *.mgt, *.edsk or *.sdf, then rename them to *.dsk in order to load it in this emulator.
 
-All formats are currently supported only as read-only.
+All formats are currently supported only as **read-only**.
+Other formats like **SAD** can be converted to one of supported format by [SAMdisk](http://simonowen.com/samdisk/) utility.
 
 ### Keyboard:
 Most PC keys are mapped to the same SAM Coupe keys.
