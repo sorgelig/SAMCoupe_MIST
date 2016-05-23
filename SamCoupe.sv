@@ -83,7 +83,7 @@ wire ce_cpu_p = cpu_en & cpu_p;
 wire ce_cpu_n = cpu_en & cpu_n;
 wire ce_bus   = ce_6mn;
 
-wire real_zx = (!video_mode && status[2]);
+wire real_zx = (!video_mode && status[2] && ~status[1]);
 
 always @(negedge clk_sys) begin
 	reg [3:0] counter = 0;
