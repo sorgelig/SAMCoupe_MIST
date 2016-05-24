@@ -318,8 +318,8 @@ end
 ////////////////////  ASIC PORTS  ///////////////////
 reg  [7:0] brdr;
 wire [3:0] border_color = {brdr[5], brdr[2:0]};
-wire       ear_out = brdr[4];
-wire       mic_out = brdr[3];
+wire       ear_out =  brdr[4];
+wire       mic_out = ~brdr[3];
 
 reg  [7:0] lmpr;
 wire [4:0] page_ab  = lmpr[4:0];
@@ -346,7 +346,7 @@ always @(posedge clk_sys) begin
 	if(reset) begin
 		lmpr <= 0;
 		hmpr <= 0;
-		brdr <= 0;
+		brdr <= 8;
 	end else begin
 		old_we <= port_we;
 		if(port_we & ~old_we) begin
