@@ -111,11 +111,11 @@ wire noise0, noise1;
 wire [3:0] mixout0_l, mixout0_r;
 wire [3:0] mixout1_l, mixout1_r;
 wire [3:0] mixout2_l, mixout2_r;
-wire [3:0] mixout2_l_with_env, mixout2_r_with_env;
+wire [3:0] envout0_l, envout0_r;
 wire [3:0] mixout3_l, mixout3_r;
 wire [3:0] mixout4_l, mixout4_r;
 wire [3:0] mixout5_l, mixout5_r;
-wire [3:0] mixout5_l_with_env, mixout5_r_with_env;
+wire [3:0] envout1_l, envout1_r;
 
 // Frequency and noise generators, top half
 saa1099_tone_gen freq_gen0
@@ -193,6 +193,7 @@ saa1099_noise_gen noise_gen1
 // Mixers
 sa1099_mixer_and_amplitude mixer0
 (
+	.env(0),
 	.tone(gen0_tone && freqenable[0] && (noisegen[1:0] != 3)),  // if gen0 is being used to generate noise, don't use this channel for tone output
 	.noise(noise0 && noiseenable[0]),
 	.amplitude_l(amplit0[3:0]),
@@ -203,6 +204,7 @@ sa1099_mixer_and_amplitude mixer0
 
 sa1099_mixer_and_amplitude mixer1
 (
+	.env(0),
 	.tone(gen1_tone && freqenable[1] && !envelope0[7]),
 	.noise(noise0 && noiseenable[1]),
 	.amplitude_l(amplit1[3:0]),
@@ -211,18 +213,34 @@ sa1099_mixer_and_amplitude mixer1
 	.out_r(mixout1_r)
 );
 
+// Envelope generators
+saa1099_envelope_gen envelope_gen0
+(
+	.*,
+	.envreg(envelope0),
+	.write_to_envreg_addr(!cs_n & !wr_n &  a0 & (din[4:0] == 'h18)),
+	.write_to_envreg_data(!cs_n & !wr_n & !a0 & (addr == 'h18)),
+	.pulse_from_tonegen(pulse_to_envelope0),
+	.sound_in_left(amplit2[3:0]),
+	.sound_in_right(amplit2[7:4]),
+	.sound_out_left(envout0_l),
+	.sound_out_right(envout0_r)
+);
+
 sa1099_mixer_and_amplitude mixer2
 (
+	.env(~freqenable[2] & ~noiseenable[2] & envelope0[7]),
 	.tone(gen2_tone && freqenable[2]),
 	.noise(noise0 && noiseenable[2]),
-	.amplitude_l(amplit2[3:0]),
-	.amplitude_r(amplit2[7:4]),
+	.amplitude_l(envout0_l),
+	.amplitude_r(envout0_r),
 	.out_l(mixout2_l),
 	.out_r(mixout2_r)
 );
 
 sa1099_mixer_and_amplitude mixer3
 (
+	.env(0),
 	.tone(gen3_tone && freqenable[3] && (noisegen[5:4] != 3)), // if gen3 is being used to generate noise, don't use this channel for tone output
 	.noise(noise1 && noiseenable[3]),
 	.amplitude_l(amplit3[3:0]),
@@ -233,39 +251,13 @@ sa1099_mixer_and_amplitude mixer3
 
 sa1099_mixer_and_amplitude mixer4
 (
+	.env(0),
 	.tone(gen4_tone && freqenable[4] && !envelope1[7]),
 	.noise(noise1 && noiseenable[4]),
 	.amplitude_l(amplit4[3:0]),
 	.amplitude_r(amplit4[7:4]),
 	.out_l(mixout4_l),
 	.out_r(mixout4_r)
-);
-
-sa1099_mixer_and_amplitude mixer5
-(
-	.tone(gen5_tone && freqenable[5]),
-	.noise(noise1 && noiseenable[5]),
-	.amplitude_l(amplit5[3:0]),
-	.amplitude_r(amplit5[7:4]),
-	.out_l(mixout5_l),
-	.out_r(mixout5_r)
-);
-
-
-// Envelope generators
-saa1099_envelope_gen envelope_gen0
-(
-	.*,
-	.envreg(envelope0),
-	.write_to_envreg_addr(!cs_n & !wr_n &  a0 & (din[4:0] == 'h18)),
-	.write_to_envreg_data(!cs_n & !wr_n & !a0 & (addr == 'h18)),
-	.pulse_from_tonegen(pulse_to_envelope0),
-	.tone_en(freqenable[2]),
-	.noise_en(noiseenable[2]),
-	.sound_in_left(mixout2_l),
-	.sound_in_right(mixout2_r),
-	.sound_out_left(mixout2_l_with_env),
-	.sound_out_right(mixout2_r_with_env)
 );
 
 saa1099_envelope_gen envelope_gen1
@@ -275,12 +267,21 @@ saa1099_envelope_gen envelope_gen1
 	.write_to_envreg_addr(!cs_n & !wr_n &  a0 & (din[4:0] == 'h19)),
 	.write_to_envreg_data(!cs_n & !wr_n & !a0 & (addr == 'h19)),
 	.pulse_from_tonegen(pulse_to_envelope1),
-	.tone_en(freqenable[5]),
-	.noise_en(noiseenable[5]),
-	.sound_in_left(mixout5_l),
-	.sound_in_right(mixout5_r),
-	.sound_out_left(mixout5_l_with_env),
-	.sound_out_right(mixout5_r_with_env)
+	.sound_in_left(amplit5[3:0]),
+	.sound_in_right(amplit5[7:4]),
+	.sound_out_left(envout1_l),
+	.sound_out_right(envout1_r)
+);
+
+sa1099_mixer_and_amplitude mixer5
+(
+	.env(~freqenable[5] & ~noiseenable[5] & envelope1[7]),
+	.tone(gen5_tone && freqenable[5]),
+	.noise(noise1 && noiseenable[5]),
+	.amplitude_l(envout1_l),
+	.amplitude_r(envout1_r),
+	.out_l(mixout5_l),
+	.out_r(mixout5_r)
 );
 
 // Final mix
@@ -289,10 +290,10 @@ saa1099_output_mixer outmix_left
 	.sound_enable(ctrl[0]),
 	.i0(mixout0_l),
 	.i1(mixout1_l),
-	.i2(mixout2_l_with_env),
+	.i2(mixout2_l),
 	.i3(mixout3_l),
 	.i4(mixout4_l),
-	.i5(mixout5_l_with_env),
+	.i5(mixout5_l),
 	.o(out_l)
 );
 
@@ -301,10 +302,10 @@ saa1099_output_mixer outmix_right
 	.sound_enable(ctrl[0]),
 	.i0(mixout0_r),
 	.i1(mixout1_r),
-	.i2(mixout2_r_with_env),
+	.i2(mixout2_r),
 	.i3(mixout3_r),
 	.i4(mixout4_r),
-	.i5(mixout5_r_with_env),
+	.i5(mixout5_r),
 	.o(out_r)
 );
 
@@ -414,6 +415,7 @@ endmodule
 
 module sa1099_mixer_and_amplitude
 (
+	input        env,
 	input        tone,
 	input        noise,
 	input  [3:0] amplitude_l,
@@ -422,7 +424,7 @@ module sa1099_mixer_and_amplitude
 	output [3:0] out_r
 );
 
-assign {out_l, out_r} = (tone | noise) ? {amplitude_l, amplitude_r} : 8'd0;
+assign {out_l, out_r} = (tone | noise | env) ? {amplitude_l, amplitude_r} : 8'd0;
 
 endmodule
 
@@ -436,8 +438,6 @@ module saa1099_envelope_gen
 	input        write_to_envreg_addr,
 	input        write_to_envreg_data,
 	input        pulse_from_tonegen,
-	input        tone_en,
-	input        noise_en,
 	input  [3:0] sound_in_left,
 	input  [3:0] sound_in_right,
 	output [3:0] sound_out_left,
@@ -550,13 +550,9 @@ saa1099_mul4x4 modulate_right
 	.o(temp_out_right)
 );
 
-assign sound_out_left = (!env_enable)? sound_in_left :  // if envelopes are not enabled, just bypass them
-								(env_enable & !tone_en & !noise_en)? envleft : // if tone and noise are off, output is envelope signal itself
-								 temp_out_left;  // else it is original signal modulated by envelope
+assign sound_out_left  = env_enable ? temp_out_left  : sound_in_left;
+assign sound_out_right = env_enable ? temp_out_right : sound_in_right;
 
-assign sound_out_right =(!env_enable)? sound_in_right :
-								(env_enable & !tone_en & !noise_en)? envright :
-								 temp_out_right;
 endmodule
 
 /////////////////////////////////////////////////////////////////////////////////
