@@ -58,6 +58,8 @@ module SamCoupe
 
 assign LED = ~(ioctl_erasing | ioctl_download | fdd_io);
 
+localparam CONF_STR = "SAMCOUPE;DSK;F3,DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real";
+
 
 ////////////////////   CLOCKS   ///////////////////
 wire clk_sys;
@@ -171,13 +173,11 @@ wire        ioctl_erasing;
 wire  [4:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
-mist_io #(.STRLEN(67)) user_io
+
+mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 (
 	.*,
-	.conf_str
-	(
-        "SAMCOUPE;DSK;F3,DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real"
-	),
+	.conf_str(CONF_STR),
 
 	// unused
 	.joystick_analog_0(),
