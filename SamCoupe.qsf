@@ -157,7 +157,7 @@ set_global_assignment -name RESERVE_DCLK_AFTER_CONFIGURATION "USE AS REGULAR IO"
 set_global_assignment -name CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION "USE AS REGULAR IO"
 set_global_assignment -name OPTIMIZE_HOLD_TIMING "ALL PATHS"
 set_global_assignment -name OPTIMIZE_MULTI_CORNER_TIMING ON
-set_global_assignment -name FITTER_EFFORT "AUTO FIT"
+set_global_assignment -name FITTER_EFFORT "FAST FIT"
 
 # Assembler Assignments
 # =====================
@@ -329,7 +329,6 @@ set_global_assignment -name VHDL_FILE t80/T80_ALU.vhd
 set_global_assignment -name VHDL_FILE t80/T80.vhd
 set_global_assignment -name VERILOG_FILE pll.v
 set_global_assignment -name SYSTEMVERILOG_FILE sram.sv
-set_global_assignment -name SYSTEMVERILOG_FILE ym2149.sv
 set_global_assignment -name SYSTEMVERILOG_FILE saa1099.sv
 set_global_assignment -name VERILOG_FILE sigma_delta_dac.v
 set_global_assignment -name VERILOG_FILE keyboard.v

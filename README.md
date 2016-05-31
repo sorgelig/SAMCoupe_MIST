@@ -8,7 +8,7 @@
 - Two disk drives with MGT, SDF and EDSK disk images support.
 - Original SAM joysticks (same as Sinclair 1 and 2)
 - Kempston joystick (useful for some ZX games)
-- SAA1099(based on [ZXUno](http://zxuno.speccy.org/index_e.shtml) model) and AY8912(YM2149) sound chips.
+- SAA1099(based on [ZXUno](http://zxuno.speccy.org/index_e.shtml) model) sound chip.
 
 ### To do:
 - Improve SAA1099 emulation

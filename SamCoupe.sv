@@ -74,7 +74,6 @@ pll pll
 );
 
 reg  ce_psg;   //8MHz
-reg  ce_zxpsg; //1.77MHz
 reg  ce_6mp;
 reg  ce_6mn;
 reg  ce_24m;
@@ -90,7 +89,7 @@ wire real_zx = (!video_mode && status[2] && ~status[1]);
 always @(negedge clk_sys) begin
 	reg [3:0] counter = 0;
 	reg [3:0] psg_div = 0;
-	reg [5:0] zx_div = 0;
+	reg [4:0] zx_div = 0;
 	reg       old_zx, orig_en, zx_en;
 	reg [1:0] timeout;
 
@@ -106,10 +105,10 @@ always @(negedge clk_sys) begin
 	if(!counter[3:0]) cpu_en <= ~(ram_wait | io_wait) | zx_en;
 
 	zx_div <= zx_div + 1'd1;
-	if(zx_div == 53) zx_div <= 0;
+	if(zx_div == 26) zx_div <= 0;
 	if(zx_en) begin
-		cpu_p <= (zx_div == 0)  | (zx_div == 27);
-		cpu_n <= (zx_div == 13) | (zx_div == 40);
+		cpu_p <= (zx_div == 0);
+		cpu_n <= (zx_div == 13);
 	end
 
 	if(((old_zx != real_zx) & cpu_en) | (~zx_en & ~orig_en)) begin
@@ -128,8 +127,6 @@ always @(negedge clk_sys) begin
 	psg_div <= psg_div + 1'd1;
 	if(psg_div == 11) psg_div <= 0;
 	ce_psg  <= !psg_div;
-
-	ce_zxpsg <= !zx_div;
 end
 
 // Contention model
@@ -359,16 +356,15 @@ end
 
 reg [7:0] asic_dout;
 always_comb begin
-	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel, addr[14] & zxpsg_sel})
-		'b1XXXXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
-		'b01XXXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
-		'b001XXXXX: asic_dout = lmpr;
-		'b0001XXXX: asic_dout = hmpr;
-		'b00001XXX: asic_dout = vid_dout;
-		'b000001XX: asic_dout = fdd_dout;
-		'b0000001X: asic_dout = {2'b00, joystick_0[5:0] | joystick_1[5:0]};
-		'b00000001: asic_dout = sound_data;
-		'b00000000: asic_dout = 8'hFF;
+	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel})
+		'b1XXXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
+		'b01XXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
+		'b001XXXX: asic_dout = lmpr;
+		'b0001XXX: asic_dout = hmpr;
+		'b00001XX: asic_dout = vid_dout;
+		'b000001X: asic_dout = fdd_dout;
+		'b0000001: asic_dout = {2'b00, joystick_0[5:0] | joystick_1[5:0]};
+		'b0000000: asic_dout = 8'hFF;
 	endcase
 end
 
@@ -377,7 +373,6 @@ end
 wire [7:0] psg_ch_l;
 wire [7:0] psg_ch_r;
 wire       tape_in = 0;
-wire       audio_orig_l, audio_orig_r;
 
 saa1099 psg
 (
@@ -397,7 +392,7 @@ sigma_delta_dac #(8) dac_l
 	.CLK(clk_sys),
 	.RESET(reset),
 	.DACin({1'b0, psg_ch_l} + {1'b0, ear_out, mic_out, tape_in, 5'b00000}),
-	.DACout(audio_orig_l)
+	.DACout(AUDIO_L)
 );
 
 sigma_delta_dac #(8) dac_r
@@ -405,52 +400,8 @@ sigma_delta_dac #(8) dac_r
 	.CLK(clk_sys),
 	.RESET(reset),
 	.DACin({1'b0, psg_ch_r} + {1'b0, ear_out, mic_out, tape_in, 5'b00000}),
-	.DACout(audio_orig_r)
+	.DACout(AUDIO_R)
 );
-
-wire       zxpsg_sel = addr[15] & (addr[7:0] == 253);
-wire [7:0] sound_data;
-wire [7:0] psg_ch_a;
-wire [7:0] psg_ch_b;
-wire [7:0] psg_ch_c;
-wire [5:0] zxpsg_active;
-wire       audio_zx_l, audio_zx_r;
-
-ym2149 ym2149
-(
-	.CLK(clk_sys),
-	.CE(ce_zxpsg),
-	.RESET(reset),
-	.BDIR(zxpsg_sel & port_we),
-	.BC(addr[14]),
-	.DI(cpu_dout),
-	.DO(sound_data),
-	.CHANNEL_A(psg_ch_a),
-	.CHANNEL_B(psg_ch_b),
-	.CHANNEL_C(psg_ch_c),
-	.ACTIVE(zxpsg_active),
-	.SEL(0),
-	.MODE(0)
-);
-
-sigma_delta_dac #(9) dac_zxl
-(
-	.CLK(clk_sys),
-	.RESET(reset),
-	.DACin({1'b0, psg_ch_a, 1'b0} + {2'b00, psg_ch_b} + {2'b00, ear_out, mic_out, tape_in, 5'b00000}),
-	.DACout(audio_zx_l)
-);
-
-sigma_delta_dac #(9) dac_zxr
-(
-	.CLK(clk_sys),
-	.RESET(reset),
-	.DACin({1'b0, psg_ch_c, 1'b0} + {2'b00, psg_ch_b} + {2'b00, ear_out, mic_out, tape_in, 5'b00000}),
-	.DACout(audio_zx_r)
-);
-
-assign AUDIO_L = zxpsg_active ? audio_zx_l : audio_orig_l;
-assign AUDIO_R = zxpsg_active ? audio_zx_r : audio_orig_r;
 
 
 ////////////////////   VIDEO   ///////////////////
