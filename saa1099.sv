@@ -1,29 +1,30 @@
+//============================================================================
+// 
+//  SAA1099 sound generator
+//  Copyright (C) 2016 Sorgelig
+//
+//  Based on SAA1099.v code from Miguel Angel Rodriguez Jodar
+//  Based on SAASound code  from Dave Hooper
+//
+//  This program is free software; you can redistribute it and/or modify it
+//  under the terms of the GNU General Public License as published by the Free
+//  Software Foundation; either version 2 of the License, or (at your option)
+//  any later version.
+//
+//  This program is distributed in the hope that it will be useful, but WITHOUT
+//  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+//  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+//  more details.
+//
+//  You should have received a copy of the GNU General Public License along
+//  with this program; if not, write to the Free Software Foundation, Inc.,
+//  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+//
+//============================================================================
 `timescale 1ns / 1ps
 `default_nettype none
 
-//////////////////////////////////////////////////////////////////////////////////
-// Company:
-// Engineer: Miguel Angel Rodriguez Jodar
-//
-// Create Date:    17:20:11 08/09/2015
-// Design Name:    SAM Coupe clone
-// Module Name:    saa1099
-// Project Name:   SAM Coupe clone
-// Target Devices: Spartan 6
-// Tool versions:  ISE 12.4
-// Description:
-//
-// Dependencies:
-//
-// Revision:
-// Revision 0.01 - File Created
-// Additional Comments:
-//
-//
-// Synchronous version with fixes for volume and envelope. (Sorgelig)
-// 
-//
-//////////////////////////////////////////////////////////////////////////////////
+
 module saa1099
 (
 	input        clk_sys,
@@ -37,8 +38,6 @@ module saa1099
 	output [7:0] out_r
 );
 
-// DTACK is not implemented. Sorry about that
-
 reg [7:0] amplit0, amplit1, amplit2, amplit3, amplit4, amplit5;
 reg [7:0] freq0, freq1, freq2, freq3, freq4, freq5;
 reg [7:0] oct10, oct32, oct54;
@@ -46,20 +45,19 @@ reg [7:0] freqenable;
 reg [7:0] noiseenable;
 reg [7:0] noisegen;
 reg [7:0] envelope0, envelope1;
-reg [7:0] ctrl;  // frequency reset and sound enable for all channels
+reg [7:0] ctrl;
 
-reg [4:0] addr;  // holds the address of the register to write to
+reg [4:0] addr;
 wire      rst = ~rst_n | ctrl[1];
 reg       wr;
 
-// Write values into internal registers
 always @(posedge clk_sys) begin
 	reg old_wr;
 	old_wr <= wr_n;
 
+	wr <= 0;
 	if(~rst_n) begin
 		addr <= 0;
-		wr <= 0;
 		{amplit0, amplit1, amplit2, amplit3, amplit4, amplit5} <= 0;
 		{freq0, freq1, freq2, freq3, freq4, freq5} <= 0;
 		{oct10, oct32, oct54} <= 0;
@@ -68,7 +66,6 @@ always @(posedge clk_sys) begin
 		ctrl <= 0;
 	end
 	else begin
-		wr <= 0;
 		if(!cs_n & old_wr & !wr_n) begin
 			wr <= 1;
 			if(a0) addr <= din[4:0];
@@ -106,12 +103,12 @@ always @(posedge clk_sys) begin
 	end
 end
 
-wire [5:0] out0_l, out0_r;
+wire [11:0] out0;
 saa1099_triplet top
 (
 	.*,
-	.vol_l('{amplit0[3:0], amplit1[3:0], amplit2[3:0]}),
-	.vol_r('{amplit0[7:4], amplit1[7:4], amplit2[7:4]}),
+	.vol('{amplit0, amplit1, amplit2}),
+	.env(envelope0),
 
 	.freq('{freq0, freq1, freq2}),
 	.octave('{oct10[2:0], oct10[6:4], oct32[2:0]}),
@@ -120,21 +117,18 @@ saa1099_triplet top
 	.noise_en(noiseenable[2:0]),
 	.noise_freq(noisegen[1:0]),
 
-	.envelope(envelope0),
-
 	.wr_addr(wr &  a0 & (din[4:0] == 'h18)),
 	.wr_data(wr & !a0 & (addr == 'h18)),
 
-	.out_l(out0_l),
-	.out_r(out0_r)
+	.out(out0)
 );
 
-wire [5:0] out1_l, out1_r;
+wire [11:0] out1;
 saa1099_triplet bottom
 (
 	.*,
-	.vol_l('{amplit3[3:0], amplit4[3:0], amplit5[3:0]}),
-	.vol_r('{amplit3[7:4], amplit4[7:4], amplit5[7:4]}),
+	.vol('{amplit3, amplit4, amplit5}),
+	.env(envelope1),
 
 	.freq('{freq3, freq4, freq5}),
 	.octave('{oct32[6:4], oct54[2:0], oct54[6:4]}),
@@ -143,17 +137,14 @@ saa1099_triplet bottom
 	.noise_en(noiseenable[5:3]),
 	.noise_freq(noisegen[5:4]),
 
-	.envelope(envelope1),
-
 	.wr_addr(wr &  a0 & (din[4:0] == 'h19)),
 	.wr_data(wr & !a0 & (addr == 'h19)),
 
-	.out_l(out1_l),
-	.out_r(out1_r)
+	.out(out1)
 );
 
-saa1099_output_mixer outmix_left (.*, .en(ctrl[0]), .i0(out0_l), .i1(out1_l), .o(out_l));
-saa1099_output_mixer outmix_right(.*, .en(ctrl[0]), .i0(out0_r), .i1(out1_r), .o(out_r));
+saa1099_output_mixer outmix_l(.*, .en(ctrl[0]), .in0(out0[5:0]),  .in1(out1[5:0]),  .out(out_l));
+saa1099_output_mixer outmix_r(.*, .en(ctrl[0]), .in0(out0[11:6]), .in1(out1[11:6]), .out(out_r));
 
 endmodule
 
@@ -163,75 +154,44 @@ module saa1099_triplet
 	input        rst,
 	input        clk_sys,
 	input        ce,
-	input  [3:0] vol_l[3],
-	input  [3:0] vol_r[3],
+
+	input  [7:0] vol[3],
+	input  [7:0] env,
+
 	input  [7:0] freq[3],
 	input  [2:0] octave[3],
 	input  [2:0] freq_en,
+
 	input  [2:0] noise_en,
 	input  [1:0] noise_freq,
-	input  [7:0] envelope,
 
 	input        wr_addr,
 	input        wr_data,
 
-	output [5:0] out_l,
-	output [5:0] out_r
+	output[11:0] out
 );
 
 wire       tone0, tone1, tone2, noise;
 wire       pulse_noise, pulse_envelope;
-wire [3:0] out0_l, out0_r, out1_l, out1_r, out2_l, out2_r;
+wire [7:0] out0, out1, out2;
 
-saa1099_tone_gen  freq_gen0(.*, .out(tone0), .octave(octave[0]), .freq(freq[0]), .pulseout(pulse_noise));
-saa1099_tone_gen  freq_gen1(.*, .out(tone1), .octave(octave[1]), .freq(freq[1]), .pulseout(pulse_envelope));
-saa1099_tone_gen  freq_gen2(.*, .out(tone2), .octave(octave[2]), .freq(freq[2]), .pulseout());
-saa1099_noise_gen noise_gen(.*, .out(noise));
+saa1099_tone  freq_gen0(.*, .out(tone0), .octave(octave[0]), .freq(freq[0]), .pulse(pulse_noise));
+saa1099_tone  freq_gen1(.*, .out(tone1), .octave(octave[1]), .freq(freq[1]), .pulse(pulse_envelope));
+saa1099_tone  freq_gen2(.*, .out(tone2), .octave(octave[2]), .freq(freq[2]), .pulse());
+saa1099_noise noise_gen(.*, .out(noise));
 
-saa1099_amp amp0
-(
-	.*,
-	.mixmode({noise_en[0], freq_en[0] & (noise_freq != 3)}),
-	.tone(tone0),
-	.envreg(0),
-	.volume_l(vol_l[0]),
-	.volume_r(vol_r[0]),
-	.out_left(out0_l),
-	.out_right(out0_r)
-);
+saa1099_amp amp0(.*, .mixmode({noise_en[0], freq_en[0]}), .tone(tone0), .envreg(0),   .vol(vol[0]), .out(out0));
+saa1099_amp amp1(.*, .mixmode({noise_en[1], freq_en[1]}), .tone(tone1), .envreg(0),   .vol(vol[1]), .out(out1));
+saa1099_amp amp2(.*, .mixmode({noise_en[2], freq_en[2]}), .tone(tone2), .envreg(env), .vol(vol[2]), .out(out2));
 
-saa1099_amp amp1
-(
-	.*,
-	.mixmode({noise_en[1], freq_en[1] & ~envelope[7]}),
-	.tone(tone1),
-	.envreg(0),
-	.volume_l(vol_l[1]),
-	.volume_r(vol_r[1]),
-	.out_left(out1_l),
-	.out_right(out1_r)
-);
-
-saa1099_amp amp2
-(
-	.*,
-	.mixmode({noise_en[2], freq_en[2]}),
-	.tone(tone2),
-	.envreg(envelope),
-	.volume_l(vol_l[2]),
-	.volume_r(vol_r[2]),
-	.out_left(out2_l),
-	.out_right(out2_r)
-);
-
-assign out_l = out0_l + out1_l + out2_l;
-assign out_r = out0_r + out1_r + out2_r;
+assign out[5:0]  = out0[3:0] + out1[3:0] + out2[3:0];
+assign out[11:6] = out0[7:4] + out1[7:4] + out2[7:4];
 
 endmodule
 
 /////////////////////////////////////////////////////////////////////////////////
 
-module saa1099_tone_gen
+module saa1099_tone
 (
 	input       rst,
 	input       clk_sys,
@@ -239,21 +199,21 @@ module saa1099_tone_gen
 	input [2:0] octave,
 	input [7:0] freq,
 	output reg  out,
-	output reg  pulseout
+	output reg  pulse
 );
 
 wire [16:0] fcount = ((17'd511 - freq) << (4'd8 - octave)) - 1'd1;
 always @(posedge clk_sys) begin
 	reg [16:0] count;
 
-	pulseout <= 0;
+	pulse <= 0;
 	if(rst) begin
 		count <= fcount;
 		out   <= 0;
 	end else if(ce) begin
 		if(!count) begin
 			count <= fcount;
-			pulseout <= 1;
+			pulse <= 1;
 			out <= ~out;
 		end else begin
 			count <= count - 1'd1;
@@ -265,14 +225,14 @@ endmodule
 
 /////////////////////////////////////////////////////////////////////////////////
 
-module saa1099_noise_gen
+module saa1099_noise
 (
-	input        rst,
-	input        clk_sys,
-	input        ce,
-	input        pulse_noise,
-	input  [1:0] noise_freq,
-	output       out
+	input       rst,
+	input       clk_sys,
+	input       ce,
+	input       pulse_noise,
+	input [1:0] noise_freq,
+	output      out
 );
 
 reg  [16:0] lfsr = 0;
@@ -316,10 +276,8 @@ module saa1099_amp
 	input        wr_addr,
 	input        wr_data,
 	input        pulse_envelope,
-	input  [3:0] volume_l,
-	input  [3:0] volume_r,
-	output [3:0] out_left,
-	output [3:0] out_right
+	input  [7:0] vol,
+	output [7:0] out
 );
 
 wire       phases[8] = '{0,0,0,0,1,1,0,0};
@@ -332,87 +290,81 @@ wire [3:0] levels[4][16] =
 	'{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15}
 };
 
-reg [2:0] envshape;
-reg       stereoshape;
-wire      env_enable = envreg[7];
-wire      env_resolution = envreg[4];
-reg [3:0] envcounter;
+reg [2:0] shape;
+reg       stereo;
+wire      resolution = envreg[4];
+wire      enable     = envreg[7];
+reg [3:0] counter;
 reg       phase;
 
 always @(posedge clk_sys) begin
-	reg envclock;
-	reg pending_data;
+	reg clock;
+	reg new_data;
 
-	if(rst | ~env_enable) begin
-		pending_data <= 0;
-		envshape <= envreg[3:1];
-		stereoshape <= envreg[0];
-		envclock <= envreg[5];
-		pending_data <= 0;
-		phase <= 0;
-		envcounter <= 0;
+	if(rst | ~enable) begin
+		new_data <= 0;
+		stereo   <= envreg[0];
+		shape    <= envreg[3:1];
+		clock    <= envreg[5];
+		phase    <= 0;
+		counter  <= 0;
 	end
 	else begin
-		if(wr_data) pending_data <= 1;
-		if(envclock ? wr_addr : pulse_envelope) begin  // pulse from internal or external clock?
-			if((envcounter | env_resolution) == 15) begin
-				if(phase >= phases[envshape]) begin
-					if(envshape[0]) begin
-						phase <= 0;
-						envcounter <= 0;
-					end
-					if(pending_data) begin  // if we reached one of the designated points (3) or (4) and there is pending data, load it
-						envshape <= envreg[3:1];
-						stereoshape <= envreg[0];
-						envclock <= envreg[5];
-						pending_data <= 0;
-						phase <= 0;
-						envcounter <= 0;
+		if(wr_data) new_data <= 1;
+		if(clock ? wr_addr : pulse_envelope) begin  // pulse from internal or external clock?
+			if((counter | resolution) == 15) begin
+				if(phase >= phases[shape]) begin
+					if(new_data | shape[0]) begin // if we reached one of the designated points (3) or (4) and there is pending data, load it
+						new_data <= 0;
+						stereo   <= envreg[0];
+						shape    <= envreg[3:1];
+						clock    <= envreg[5];
+						phase    <= 0;
+						counter  <= 0;
 					end
 				end else begin
-					phase <= 1;
-					envcounter <= 0;
+					phase   <= 1;
+					counter <= 0;
 				end
 			end else begin
-				envcounter <= envcounter + env_resolution + 1'd1;
+				if(resolution) counter <= (counter & 4'b1110) + 2'd2;
+					else counter <= counter + 1'd1;
 			end
 		end
 	end
 end
 
-wire [3:0] envleft  = levels[env[envshape][phase]][envcounter] & {3'b111, ~env_resolution};
-wire [3:0] envright = (!stereoshape)? envleft : ~(envleft | env_resolution); // bit 0 of envreg inverts envelope shape
-wire [3:0] env_out_left;
-wire [3:0] env_out_right;
+wire [3:0] env_l = levels[env[shape][phase]][counter] & {3'b111, ~resolution};
+wire [3:0] env_r = stereo ? ~(env_l | resolution) : env_l; // bit 0 of envreg inverts envelope shape
 
-reg  [1:0] outint;
+reg  [1:0] outmix;
 always_comb begin
 	case(mixmode)
-		0: outint <= 0;
-		1: outint <= {tone,  1'b0};
-		2: outint <= {noise, 1'b0};
-		3: outint <= (tone & noise) ? 2'b01 : {tone, 1'b0};
+		0: outmix <= 0;
+		1: outmix <= {tone,  1'b0};
+		2: outmix <= {noise, 1'b0};
+		3: outmix <= {tone & ~noise, tone & noise};
 	endcase
 end
 
-reg [3:0] mix_left;
-reg [3:0] mix_right;
+wire [3:0] vol_mix_l = vol[3:0]>>outmix[0];
+wire [3:0] vol_mix_r = vol[7:4]>>outmix[0];
+wire [3:0] env_out_l;
+wire [3:0] env_out_r;
+saa1099_mul_env mod_l(.a({vol_mix_l[3:1],1'b0}), .b(env_l), .o(env_out_l));
+saa1099_mul_env mod_r(.a({vol_mix_r[3:1],1'b0}), .b(env_r), .o(env_out_r));
 
-wire[3:0] vol_nft_l = outint[0] ? volume_l>>2 : volume_l;
-wire[3:0] vol_nft_r = outint[0] ? volume_r>>2 : volume_r;
-
-saa1099_mul_env modulate_left (.a(vol_nft_l), .b(envleft),  .o(env_out_left));
-saa1099_mul_env modulate_right(.a(vol_nft_r), .b(envright), .o(env_out_right));
-
+reg [3:0] mix_l;
+reg [3:0] mix_r;
 always_comb begin
-	case({env_enable, outint})
-		'b100, 'b101: {mix_left, mix_right} = {env_out_left, env_out_right};
-		'b001, 'b010: {mix_left, mix_right} = {vol_nft_l, vol_nft_r};
-		     default: {mix_left, mix_right} = 0;
+	case({enable, outmix})
+		'b100, 'b101: {mix_l, mix_r} = {env_out_l, env_out_r};
+		'b001, 'b010: {mix_l, mix_r} = {vol_mix_l, vol_mix_r};
+		     default: {mix_l, mix_r} = 0;
 	endcase
 end
 
-assign {out_left, out_right} = {mix_left, mix_right};
+assign out = {mix_l, mix_r};
 
 endmodule
 
@@ -425,10 +377,10 @@ module saa1099_mul_env
 	output [3:0] o  // output
 );
 
-wire [7:0] res =  (b[0] ?      a     : 8'd0)+ 
+wire [7:0] res =  (b[0] ?      a     : 8'd0)+
                   (b[1] ? {  a,1'b0} : 8'd0)+
                   (b[2] ? { a,2'b00} : 8'd0)+
-                  (b[3] ? {a,3'b000} : 8'd0);
+                  (b[3] ? {a,3'b000} : 8'd0) + 8'd15;
 
 assign o = res[7:4];
 
@@ -441,34 +393,35 @@ module saa1099_output_mixer
 	input        clk_sys,
 	input        ce,
 	input        en,
-	input  [5:0] i0,
-	input  [5:0] i1,
-	output [7:0] o
+	input  [5:0] in0,
+	input  [5:0] in1,
+	output [7:0] out
 );
 
-assign o = out;
+/*
+wire  [7:0] mix = in0 + in1;
+wire [15:0] o   = 16'd682 * mix;
+assign out      = ~en ? 8'h00 : o[15:8];
+*/
 
-//
-// Although channels have 5 bits, actually they have 4 bits.
-// 5th bit is used by noise and can be borrowed from other channel or discarded (depend on case).
-wire [7:0] mix = i0 + i1;
+assign     out = o;
+wire [7:0] mix = in0 + in1;
 wire [7:0] compressor_table[96] =
 '{
-	'h00, 'h08, 'h0E, 'h13, 'h17, 'h1C, 'h20, 'h24, 'h27, 'h2B, 'h2F, 'h32, 'h36, 'h39, 'h3C, 'h3F, 
-	'h43, 'h46, 'h49, 'h4C, 'h4F, 'h52, 'h55, 'h58, 'h5A, 'h5D, 'h60, 'h63, 'h66, 'h68, 'h6B, 'h6E, 
-	'h70, 'h73, 'h75, 'h78, 'h7B, 'h7D, 'h80, 'h82, 'h85, 'h87, 'h8A, 'h8C, 'h8F, 'h91, 'h94, 'h96, 
-	'h98, 'h9B, 'h9D, 'h9F, 'hA2, 'hA4, 'hA6, 'hA9, 'hAB, 'hAD, 'hB0, 'hB2, 'hB4, 'hB6, 'hB9, 'hBB, 
-	'hBD, 'hBF, 'hC2, 'hC4, 'hC6, 'hC8, 'hCA, 'hCC, 'hCF, 'hD1, 'hD3, 'hD5, 'hD7, 'hD9, 'hDB, 'hDE, 
+	'h00, 'h08, 'h0E, 'h13, 'h17, 'h1C, 'h20, 'h24, 'h27, 'h2B, 'h2F, 'h32, 'h36, 'h39, 'h3C, 'h3F,
+	'h43, 'h46, 'h49, 'h4C, 'h4F, 'h52, 'h55, 'h58, 'h5A, 'h5D, 'h60, 'h63, 'h66, 'h68, 'h6B, 'h6E,
+	'h70, 'h73, 'h75, 'h78, 'h7B, 'h7D, 'h80, 'h82, 'h85, 'h87, 'h8A, 'h8C, 'h8F, 'h91, 'h94, 'h96,
+	'h98, 'h9B, 'h9D, 'h9F, 'hA2, 'hA4, 'hA6, 'hA9, 'hAB, 'hAD, 'hB0, 'hB2, 'hB4, 'hB6, 'hB9, 'hBB,
+	'hBD, 'hBF, 'hC2, 'hC4, 'hC6, 'hC8, 'hCA, 'hCC, 'hCF, 'hD1, 'hD3, 'hD5, 'hD7, 'hD9, 'hDB, 'hDE,
 	'hE0, 'hE2, 'hE4, 'hE6, 'hE8, 'hEA, 'hEC, 'hEE, 'hF0, 'hF2, 'hF4, 'hF6, 'hF8, 'hFA, 'hFC, 'hFF
 };
 
 // Clean the audio.
-reg [7:0] out;
+reg  [7:0] o;
 always @(posedge clk_sys) begin
 	reg ced;
 	ced <= ce;
-	if(ced) out <= ~en ? 8'h00 : (mix>=$size(compressor_table)) ? 8'hFF : compressor_table[mix];
+	if(ced) o <= ~en ? 8'h00 : (mix>=$size(compressor_table)) ? 8'hFF : compressor_table[mix];
 end
-
 
 endmodule
