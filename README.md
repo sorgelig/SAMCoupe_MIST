@@ -11,7 +11,7 @@
 - SAA1099(based on [ZXUno](http://zxuno.speccy.org/index_e.shtml) model) sound chip.
 
 ### To do:
-- Improve SAA1099 emulation
+- Disk write
 - Mouse support (undecided yet)
 
 ### Installation:
