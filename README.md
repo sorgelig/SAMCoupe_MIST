@@ -34,6 +34,8 @@ There is only basic support SDF and EDSK formats. If application has specific co
 All formats are currently supported only as **read-only**.
 Other formats like **SAD** can be converted to one of supported format by [SAMdisk](http://simonowen.com/samdisk/) utility.
 
+Core provides autostart for newly inserted disk into drive 1. Autostart works only on startup screen with stripes.
+
 ### Keyboard:
 Most PC keys are mapped to the same SAM Coupe keys.
 **F1-F10** mapped to **F1-F0**, thus reduced keyboards like Logitech K400r can be used. **Alt** is mapped to **Symbol shift**. **Left Shift** is mapped to **Shift**, **Right Shift** doesn't map to SAM Coupe key but used as modifier for unfitted keys to represent original SAM Coupe keys. For example RShift + 6...0 prodice keys as written on PC keyboards. Suitable for other close to RShift PC keys. **RShift+Ctrl** switches to layout more suitable for ZX (where cursor keys are mapped to CAPS 5-8) although most SAM Coupe ZX emulators already provide good mapping and thus usually you don't need to switch layout.
@@ -44,7 +46,7 @@ Most PC keys are mapped to the same SAM Coupe keys.
 * F12 - OSD
 
 ### Other info:
-**Contention** option allow to turn on/off CPU slowdown. Originally SAM Coupe's CPU doesn't work at full speed when accessing ports and internal memory. If you switch it off then CPU will work at full speed. ZX mode will work at 6MHz as well if this option is off.
+**CPU Throttle** option allow to turn on/off CPU slowdown. Originally SAM Coupe's CPU doesn't work at full speed when accessing ports and internal memory. If you switch it off then CPU will work at full speed. ZX mode will work at 6MHz as well if this option is off.
 
 **ZX mode speed** allows to switch between original SAM Coupe's ZX speed emulation through contention and real 3.5MHz frequency. It's useful for ZX import where beeper used for sound. In emulation mode the sound is garbled in these games while real frequency provides clean sound. (Arkanoid 48k is a good example).
 

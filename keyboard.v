@@ -46,6 +46,7 @@ module keyboard
 
 	input      [15:0] addr,
 	output      [7:0] key_data,
+	input             autostart,
 
 	output reg [11:1] Fn = 0,
 	output reg  [2:0] mod = 0
@@ -69,13 +70,23 @@ assign key_data = (!addr[8]    ? keys[0] : 8'hFF)
                  &(!addr[15]   ? keys[7] : 8'hFF)
                  &(&addr[15:8] ? keys[8] : 8'hFF);
 
+wire anykey = &(keys[0] & keys[1] & keys[2] & keys[3] & keys[4] & keys[5] & keys[6] & keys[7] & keys[8]);
 wire shift = mod[0];
 always @(posedge clk_sys) begin
+	reg auto_en;
+	reg old_anykey, old_auto;
 	reg old_reset = 0, old_sw;
 	reg mode;
 
 	old_sw <= mod[2] & mod[0];
 	if(~old_sw & mod[2] & mod[0]) mode <= ~mode;
+
+	old_anykey <= anykey;
+	old_auto <= autostart;
+	if(reset) auto_en <= 1;
+		else if(old_anykey & ~anykey) auto_en <=0;
+	if(~old_auto & autostart & auto_en) keys[2][7] <= 0;
+	if(old_auto & ~autostart) keys[2][7] <= 1;
 
 	old_reset <= reset;
 	if((~old_reset & reset) | (~old_sw & mod[2] & mod[0]))begin

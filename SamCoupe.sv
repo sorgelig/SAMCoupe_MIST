@@ -58,7 +58,7 @@ module SamCoupe
 
 assign LED = ~(ioctl_erasing | ioctl_download | fdd_io);
 
-localparam CONF_STR = "SAMCOUPE;DSK;F3,DSK;O1,Contention,On,Off;O2,ZX mode speed,Emul,Real";
+localparam CONF_STR = "SAMCOUPE;DSK;F3,DSK;O1,CPU Throttle,On,Off;O2,ZX Mode Speed,Emul,Real";
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -433,6 +433,7 @@ video video
 wire [11:1] Fn;
 wire  [2:0] mod;
 wire  [7:0] key_data;
+reg         autostart;
 keyboard kbd( .* );
 
 wire        kjoy_sel = (addr[7:0] == 'h1F);
@@ -519,6 +520,26 @@ wd1793 fdd1
 	.side(fdd1_side),
 	.ready(fdd1_ready)
 );
+
+always @(posedge clk_sys) begin
+	reg old_download;
+	integer counter;
+
+	if(reset) begin
+		autostart <= 0;
+		counter   <= 0;
+	end else begin
+		old_download <= ioctl_download;
+		if(old_download & ~ioctl_download & (ioctl_index == 1)) begin
+			autostart <= 1;
+			counter   <= 1000000;
+		end else if(ce_6mp && counter) begin
+			counter   <= counter - 1;
+			if(counter == 1) autostart <= 0;
+		end
+	end
+end
+
 
 // FDD2
 wire [19:0] fdd2_addr;
