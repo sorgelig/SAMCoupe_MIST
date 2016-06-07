@@ -103,7 +103,7 @@ always @(posedge clk_sys) begin
 	end
 end
 
-wire [11:0] out0;
+wire [21:0] out0;
 saa1099_triplet top
 (
 	.*,
@@ -123,7 +123,7 @@ saa1099_triplet top
 	.out(out0)
 );
 
-wire [11:0] out1;
+wire [21:0] out1;
 saa1099_triplet bottom
 (
 	.*,
@@ -143,8 +143,8 @@ saa1099_triplet bottom
 	.out(out1)
 );
 
-saa1099_output_mixer outmix_l(.*, .en(ctrl[0]), .in0(out0[5:0]),  .in1(out1[5:0]),  .out(out_l));
-saa1099_output_mixer outmix_r(.*, .en(ctrl[0]), .in0(out0[11:6]), .in1(out1[11:6]), .out(out_r));
+saa1099_output_mixer outmix_l(.*, .en(ctrl[0]), .in0(out0[10:0]),  .in1(out1[10:0]),  .out(out_l));
+saa1099_output_mixer outmix_r(.*, .en(ctrl[0]), .in0(out0[21:11]), .in1(out1[21:11]), .out(out_r));
 
 endmodule
 
@@ -168,12 +168,12 @@ module saa1099_triplet
 	input        wr_addr,
 	input        wr_data,
 
-	output[11:0] out
+	output[21:0] out
 );
 
 wire       tone0, tone1, tone2, noise;
 wire       pulse_noise, pulse_envelope;
-wire [7:0] out0, out1, out2;
+wire[21:0] out0, out1, out2;
 
 saa1099_tone  freq_gen0(.*, .out(tone0), .octave(octave[0]), .freq(freq[0]), .pulse(pulse_noise));
 saa1099_tone  freq_gen1(.*, .out(tone1), .octave(octave[1]), .freq(freq[1]), .pulse(pulse_envelope));
@@ -184,8 +184,8 @@ saa1099_amp amp0(.*, .mixmode({noise_en[0], freq_en[0]}), .tone(tone0), .envreg(
 saa1099_amp amp1(.*, .mixmode({noise_en[1], freq_en[1]}), .tone(tone1), .envreg(0),   .vol(vol[1]), .out(out1));
 saa1099_amp amp2(.*, .mixmode({noise_en[2], freq_en[2]}), .tone(tone2), .envreg(env), .vol(vol[2]), .out(out2));
 
-assign out[5:0]  = out0[3:0] + out1[3:0] + out2[3:0];
-assign out[11:6] = out0[7:4] + out1[7:4] + out2[7:4];
+assign out[10:0]  = out0[8:0]  + out1[8:0]  + out2[8:0];
+assign out[21:11] = out0[17:9] + out1[17:9] + out2[17:9];
 
 endmodule
 
@@ -277,7 +277,7 @@ module saa1099_amp
 	input        wr_data,
 	input        pulse_envelope,
 	input  [7:0] vol,
-	output [7:0] out
+	output[17:0] out
 );
 
 wire       phases[8] = '{0,0,0,0,1,1,0,0};
@@ -296,6 +296,7 @@ wire      resolution = envreg[4];
 wire      enable     = envreg[7];
 reg [3:0] counter;
 reg       phase;
+wire[3:0] mask = {3'b000, resolution};
 
 always @(posedge clk_sys) begin
 	reg clock;
@@ -312,30 +313,28 @@ always @(posedge clk_sys) begin
 	else begin
 		if(wr_data) new_data <= 1;
 		if(clock ? wr_addr : pulse_envelope) begin  // pulse from internal or external clock?
-			if((counter | resolution) == 15) begin
+			counter <= counter + resolution + 1'd1;
+			if((counter | mask) == 15) begin
 				if(phase >= phases[shape]) begin
+					if(~shape[0]) counter <= 15;
 					if(new_data | shape[0]) begin // if we reached one of the designated points (3) or (4) and there is pending data, load it
 						new_data <= 0;
 						stereo   <= envreg[0];
 						shape    <= envreg[3:1];
 						clock    <= envreg[5];
 						phase    <= 0;
-						counter  <= 0;
+						if(new_data) counter <= 0;
 					end
 				end else begin
-					phase   <= 1;
-					counter <= 0;
+					phase <= 1;
 				end
-			end else begin
-				if(resolution) counter <= (counter & 4'b1110) + 2'd2;
-					else counter <= counter + 1'd1;
 			end
 		end
 	end
 end
 
-wire [3:0] env_l = levels[env[shape][phase]][counter] & {3'b111, ~resolution};
-wire [3:0] env_r = stereo ? ~(env_l | resolution) : env_l; // bit 0 of envreg inverts envelope shape
+wire [3:0] env_l = levels[env[shape][phase]][counter] & ~mask;
+wire [3:0] env_r = stereo ? (4'd15 & ~mask) - env_l : env_l; // bit 0 of envreg inverts envelope shape
 
 reg  [1:0] outmix;
 always_comb begin
@@ -347,15 +346,15 @@ always_comb begin
 	endcase
 end
 
-wire [3:0] vol_mix_l = vol[3:0]>>outmix[0];
-wire [3:0] vol_mix_r = vol[7:4]>>outmix[0];
-wire [3:0] env_out_l;
-wire [3:0] env_out_r;
-saa1099_mul_env mod_l(.a({vol_mix_l[3:1],1'b0}), .b(env_l), .o(env_out_l));
-saa1099_mul_env mod_r(.a({vol_mix_r[3:1],1'b0}), .b(env_r), .o(env_out_r));
+wire [8:0] vol_mix_l = {vol[3:0],5'b00000} >> outmix[0];
+wire [8:0] vol_mix_r = {vol[7:4],5'b00000} >> outmix[0];
+wire [8:0] env_out_l;
+wire [8:0] env_out_r;
+saa1099_mul_env mod_l(.vol({vol[3:1],2'b00} >> outmix[0]), .env(env_l), .out(env_out_l));
+saa1099_mul_env mod_r(.vol({vol[3:1],2'b00} >> outmix[0]), .env(env_r), .out(env_out_r));
 
-reg [3:0] mix_l;
-reg [3:0] mix_r;
+reg [8:0] mix_l;
+reg [8:0] mix_r;
 always_comb begin
 	case({enable, outmix})
 		'b100, 'b101: {mix_l, mix_r} = {env_out_l, env_out_r};
@@ -372,17 +371,15 @@ endmodule
 
 module saa1099_mul_env
 (
-	input  [3:0] a, // amplitude
-	input  [3:0] b, // envelope
-	output [3:0] o  // output
+	input  [4:0] vol,
+	input  [3:0] env,
+	output [8:0] out
 );
 
-wire [7:0] res =  (b[0] ?      a     : 8'd0)+
-                  (b[1] ? {  a,1'b0} : 8'd0)+
-                  (b[2] ? { a,2'b00} : 8'd0)+
-                  (b[3] ? {a,3'b000} : 8'd0) + 8'd15;
-
-assign o = res[7:4];
+assign out = (env[0] ?      vol     : 9'd0)+
+             (env[1] ? {  vol,1'b0} : 9'd0)+
+             (env[2] ? { vol,2'b00} : 9'd0)+
+             (env[3] ? {vol,3'b000} : 9'd0);
 
 endmodule
 
@@ -390,38 +387,21 @@ endmodule
 
 module saa1099_output_mixer
 (
-	input        clk_sys,
-	input        ce,
-	input        en,
-	input  [5:0] in0,
-	input  [5:0] in1,
-	output [7:0] out
+	input            clk_sys,
+	input            ce,
+	input            en,
+	input     [10:0] in0,
+	input     [10:0] in1,
+	output reg [7:0] out
 );
 
-/*
-wire  [7:0] mix = in0 + in1;
-wire [15:0] o   = 16'd682 * mix;
-assign out      = ~en ? 8'h00 : o[15:8];
-*/
-
-assign     out = o;
-wire [7:0] mix = in0 + in1;
-wire [7:0] compressor_table[96] =
-'{
-	'h00, 'h08, 'h0E, 'h13, 'h17, 'h1C, 'h20, 'h24, 'h27, 'h2B, 'h2F, 'h32, 'h36, 'h39, 'h3C, 'h3F,
-	'h43, 'h46, 'h49, 'h4C, 'h4F, 'h52, 'h55, 'h58, 'h5A, 'h5D, 'h60, 'h63, 'h66, 'h68, 'h6B, 'h6E,
-	'h70, 'h73, 'h75, 'h78, 'h7B, 'h7D, 'h80, 'h82, 'h85, 'h87, 'h8A, 'h8C, 'h8F, 'h91, 'h94, 'h96,
-	'h98, 'h9B, 'h9D, 'h9F, 'hA2, 'hA4, 'hA6, 'hA9, 'hAB, 'hAD, 'hB0, 'hB2, 'hB4, 'hB6, 'hB9, 'hBB,
-	'hBD, 'hBF, 'hC2, 'hC4, 'hC6, 'hC8, 'hCA, 'hCC, 'hCF, 'hD1, 'hD3, 'hD5, 'hD7, 'hD9, 'hDB, 'hDE,
-	'hE0, 'hE2, 'hE4, 'hE6, 'hE8, 'hEA, 'hEC, 'hEE, 'hF0, 'hF2, 'hF4, 'hF6, 'hF8, 'hFA, 'hFC, 'hFF
-};
+wire [17:0] o = 18'd91 * ({1'b0,in0} + {1'b0,in1});
 
 // Clean the audio.
-reg  [7:0] o;
 always @(posedge clk_sys) begin
 	reg ced;
 	ced <= ce;
-	if(ced) o <= ~en ? 8'h00 : (mix>=$size(compressor_table)) ? 8'hFF : compressor_table[mix];
+	if(ced) out <= ~en ? 8'h00 : o[17:10];
 end
 
 endmodule
