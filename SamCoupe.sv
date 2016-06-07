@@ -221,7 +221,7 @@ T80pa cpu
 	.CEN_n(ce_cpu_n),
 	.WAIT_n(1),
 	.INT_n(nINT),
-	.NMI_n(Fn[11]),
+	.NMI_n((mod[2:1]==0) & Fn[11]),
 	.BUSRQ_n(1),
 	.M1_n(nM1),
 	.MREQ_n(nMREQ),
@@ -315,8 +315,8 @@ end
 ////////////////////  ASIC PORTS  ///////////////////
 reg  [7:0] brdr;
 wire [3:0] border_color = {brdr[5], brdr[2:0]};
-wire       ear_out =  brdr[4];
-wire       mic_out = ~brdr[3];
+wire       ear_out  = brdr[4];
+wire       mic_out  = 0; // brdr[3]; it seems not used in SAM Coupe.
 
 reg  [7:0] lmpr;
 wire [4:0] page_ab  = lmpr[4:0];
@@ -343,7 +343,7 @@ always @(posedge clk_sys) begin
 	if(reset) begin
 		lmpr <= 0;
 		hmpr <= 0;
-		brdr <= 8;
+		brdr <= 0;
 	end else begin
 		old_we <= port_we;
 		if(port_we & ~old_we) begin
@@ -372,7 +372,7 @@ end
 ////////////////////   AUDIO   ///////////////////
 wire [7:0] psg_ch_l;
 wire [7:0] psg_ch_r;
-wire       tape_in = 0;
+wire       tape_in = 0; //tape is not implemented (yet?)
 
 saa1099 psg
 (
