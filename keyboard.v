@@ -53,22 +53,15 @@ module keyboard
 );
 
 reg  [3:0] prev_clk  = 0;
-reg [11:0] sreg  = 12'hFFF;
+reg [11:0] sreg  = 'hFFF;
 wire[11:0] kdata = {ps2_kbd_data,sreg[11:1]};
 wire [7:0] kcode = kdata[9:2];
 reg  [7:0] keys[8:0];
 reg        release_btn = 0;
 
-// Output addressed row to ULA
-assign key_data = (!addr[8]    ? keys[0] : 8'hFF)
-                 &(!addr[9]    ? keys[1] : 8'hFF)
-                 &(!addr[10]   ? keys[2] : 8'hFF)
-                 &(!addr[11]   ? keys[3] : 8'hFF)
-                 &(!addr[12]   ? keys[4] : 8'hFF)
-                 &(!addr[13]   ? keys[5] : 8'hFF)
-                 &(!addr[14]   ? keys[6] : 8'hFF)
-                 &(!addr[15]   ? keys[7] : 8'hFF)
-                 &(&addr[15:8] ? keys[8] : 8'hFF);
+assign key_data = ({8{addr[8]}}  | keys[0]) & ({8{addr[9]}}  | keys[1]) & ({8{addr[10]}} | keys[2]) & ({8{addr[11]}} | keys[3])
+                 &({8{addr[12]}} | keys[4]) & ({8{addr[13]}} | keys[5]) & ({8{addr[14]}} | keys[6]) & ({8{addr[15]}} | keys[7])
+                 &({8{~&addr[15:8]}} | keys[8]);
 
 wire anykey = &(keys[0] & keys[1] & keys[2] & keys[3] & keys[4] & keys[5] & keys[6] & keys[7] & keys[8]);
 wire shift = mod[0];
@@ -92,7 +85,7 @@ always @(posedge clk_sys) begin
 	if((~old_reset & reset) | (~old_sw & mod[2] & mod[0]))begin
 		if(reset) mode <= 0;
 		prev_clk<= 0;
-		sreg    <= 12'hFFF;
+		sreg    <= 'hFFF;
 		keys[0] <= 'hFF;
 		keys[1] <= 'hFF;
 		keys[2] <= 'hFF;
@@ -106,7 +99,7 @@ always @(posedge clk_sys) begin
 		prev_clk <= {ps2_kbd_clk,prev_clk[3:1]};
 		if(prev_clk == 1) begin
 			if (kdata[11] & ^kdata[10:2] & ~kdata[1] & kdata[0]) begin
-				sreg <= 12'hFFF;
+				sreg <= 'hFFF;
 
 				if(kcode == 8'he0) ;
 				else if (kcode == 8'hf0) release_btn <= 1;
@@ -114,20 +107,20 @@ always @(posedge clk_sys) begin
 					release_btn <= 0;
 
 					case(kcode)
-						8'h59 : mod[0]    <= ~release_btn; // right shift
-						8'h11 : mod[1]    <= ~release_btn; // alt
-						8'h14 : mod[2]    <= ~release_btn; // ctrl
-						8'h05 : Fn[1]     <= ~release_btn; // F1
-						8'h06 : Fn[2]     <= ~release_btn; // F2
-						8'h04 : Fn[3]     <= ~release_btn; // F3
-						8'h0C : Fn[4]     <= ~release_btn; // F4
-						8'h03 : Fn[5]     <= ~release_btn; // F5
-						8'h0B : Fn[6]     <= ~release_btn; // F6
-						8'h83 : Fn[7]     <= ~release_btn; // F7
-						8'h0A : Fn[8]     <= ~release_btn; // F8
-						8'h01 : Fn[9]     <= ~release_btn; // F9
-						8'h09 : Fn[10]    <= ~release_btn; // F10
-						8'h78 : Fn[11]    <= ~release_btn; // F11
+						8'h59 : mod[0] <= ~release_btn; // right shift
+						8'h11 : mod[1] <= ~release_btn; // alt
+						8'h14 : mod[2] <= ~release_btn; // ctrl
+						8'h05 : Fn[1]  <= ~release_btn; // F1
+						8'h06 : Fn[2]  <= ~release_btn; // F2
+						8'h04 : Fn[3]  <= ~release_btn; // F3
+						8'h0C : Fn[4]  <= ~release_btn; // F4
+						8'h03 : Fn[5]  <= ~release_btn; // F5
+						8'h0B : Fn[6]  <= ~release_btn; // F6
+						8'h83 : Fn[7]  <= ~release_btn; // F7
+						8'h0A : Fn[8]  <= ~release_btn; // F8
+						8'h01 : Fn[9]  <= ~release_btn; // F9
+						8'h09 : Fn[10] <= ~release_btn; // F10
+						8'h78 : Fn[11] <= ~release_btn; // F11
 					endcase
 
 					case(kcode)
