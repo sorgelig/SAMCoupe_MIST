@@ -435,7 +435,7 @@ wire [11:1] Fn;
 wire  [2:0] mod;
 wire  [7:0] key_data;
 reg         autostart;
-keyboard kbd( .* );
+keyboard kbd( .*, .restart(rom0_sel & (addr == 0) & ~nMREQ & ~nRD));
 
 wire        kjoy_sel = (addr[7:0] == 'h1F);
 wire  [4:0] kbdjoy = key_data[4:0]

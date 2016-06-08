@@ -39,6 +39,7 @@
 module keyboard
 (
 	input             reset,
+	input             restart,
 	input             clk_sys,
 
 	input             ps2_kbd_clk,
@@ -76,7 +77,7 @@ always @(posedge clk_sys) begin
 
 	old_anykey <= anykey;
 	old_auto <= autostart;
-	if(reset) auto_en <= 1;
+	if(restart) auto_en <= 1;
 		else if(old_anykey & ~anykey) auto_en <=0;
 	if(~old_auto & autostart & auto_en) keys[2][7] <= 0;
 	if(old_auto & ~autostart) keys[2][7] <= 1;
