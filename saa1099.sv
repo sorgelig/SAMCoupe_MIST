@@ -267,17 +267,17 @@ endmodule
 
 module saa1099_amp
 (
-	input        rst,
-	input        clk_sys,
-	input  [7:0] envreg,
-	input  [1:0] mixmode,
-	input        tone,
-	input        noise,
-	input        wr_addr,
-	input        wr_data,
-	input        pulse_envelope,
-	input  [7:0] vol,
-	output[17:0] out
+	input             rst,
+	input             clk_sys,
+	input       [7:0] envreg,
+	input       [1:0] mixmode,
+	input             tone,
+	input             noise,
+	input             wr_addr,
+	input             wr_data,
+	input             pulse_envelope,
+	input       [7:0] vol,
+	output reg [17:0] out
 );
 
 wire       phases[8] = '{0,0,0,0,1,1,0,0};
@@ -346,24 +346,20 @@ always_comb begin
 	endcase
 end
 
-wire [8:0] vol_mix_l = {vol[3:0],5'b00000} >> outmix[0];
-wire [8:0] vol_mix_r = {vol[7:4],5'b00000} >> outmix[0];
+wire [8:0] vol_mix_l = {vol[3:1], vol[0] & ~enable, 5'b00000} >> outmix[0];
+wire [8:0] vol_mix_r = {vol[7:5], vol[4] & ~enable, 5'b00000} >> outmix[0];
 wire [8:0] env_out_l;
 wire [8:0] env_out_r;
-saa1099_mul_env mod_l(.vol({vol[3:1],2'b00} >> outmix[0]), .env(env_l), .out(env_out_l));
-saa1099_mul_env mod_r(.vol({vol[3:1],2'b00} >> outmix[0]), .env(env_r), .out(env_out_r));
+saa1099_mul_env mod_l(.vol(vol_mix_l[8:4]), .env(env_l), .out(env_out_l));
+saa1099_mul_env mod_r(.vol(vol_mix_r[8:4]), .env(env_r), .out(env_out_r));
 
-reg [8:0] mix_l;
-reg [8:0] mix_r;
 always_comb begin
 	case({enable, outmix})
-		'b100, 'b101: {mix_l, mix_r} = {env_out_l, env_out_r};
-		'b001, 'b010: {mix_l, mix_r} = {vol_mix_l, vol_mix_r};
-		     default: {mix_l, mix_r} = 0;
+		'b100, 'b101: out = {env_out_l, env_out_r};
+		'b001, 'b010: out = {vol_mix_l, vol_mix_r};
+		     default: out = 0;
 	endcase
 end
-
-assign out = {mix_l, mix_r};
 
 endmodule
 
