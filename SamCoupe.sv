@@ -58,7 +58,7 @@ module SamCoupe
 
 assign LED = ~(ioctl_erasing | ioctl_download | fdd_io);
 
-localparam CONF_STR = "SAMCOUPE;DSK;F3,DSK;O1,CPU Throttle,On,Off;O2,ZX Mode Speed,Emul,Real";
+localparam CONF_STR = "SAMCOUPE;DSK;F3,DSK;O1,CPU Throttle,On,Off;O2,ZX Mode Speed,Emul,Real;V0,v1.10";
 
 
 ////////////////////   CLOCKS   ///////////////////
