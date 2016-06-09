@@ -60,7 +60,8 @@ module mist_io #(parameter STRLEN=0, parameter PS2DIV=100)
 	// SD config
 	input             sd_conf,
 	input             sd_sdhc,
-	output            sd_mounted,
+	output            img_mounted, // signaling that new image has been mounted
+	output reg [31:0] img_size,    // size of image in bytes
 
 	// SD block level access
 	input      [31:0] sd_lba,
@@ -100,7 +101,7 @@ reg [7:0] but_sw;
 reg [2:0] stick_idx;
 
 reg    mount_strobe = 0;
-assign sd_mounted   = mount_strobe;
+assign img_mounted  = mount_strobe;
 
 assign buttons = but_sw[1:0];
 assign switches = but_sw[3:2];
@@ -250,6 +251,8 @@ always@(posedge SPI_SCK or posedge CONF_DATA0) begin
 					// notify image selection
 					8'h1c: mount_strobe <= 1;
 
+					// send image info
+					8'h1d: if(byte_cnt<5) img_size[(byte_cnt-1)<<3 +:8] <= spi_dout;
 					default: ;
 				endcase
 			end

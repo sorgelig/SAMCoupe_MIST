@@ -59,7 +59,7 @@ module SamCoupe
 assign LED = ~(ioctl_erasing | ioctl_download | fdd_io);
 
 `include "build_id.v"
-localparam CONF_STR = {"SAMCOUPE;DSK;F3,DSK;O1,CPU Throttle,On,Off;O2,ZX Mode Speed,Emul,Real;V0,v1.10.",`BUILD_DATE};
+localparam CONF_STR = {"SAMCOUPE;DSK;F3,DSK;S4,DSK;O1,CPU Throttle,On,Off;O2,ZX Mode Speed,Emul,Real;O5,External RAM,On,Off;V0,v1.10.",`BUILD_DATE};
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -171,6 +171,16 @@ wire        ioctl_erasing;
 wire  [4:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
+wire [31:0] sd_lba;
+wire        sd_rd;
+wire        sd_wr;
+wire        sd_ack;
+wire  [8:0] sd_buff_addr;
+wire  [7:0] sd_buff_dout;
+wire  [7:0] sd_buff_din;
+wire        sd_buff_wr;
+wire        img_mounted;
+wire [31:0] img_size;
 
 mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 (
@@ -182,18 +192,9 @@ mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 	.joystick_analog_1(),
 	.ps2_mouse_clk(),
 	.ps2_mouse_data(),
-	.sd_lba(),
-	.sd_rd(),
-	.sd_wr(),
-	.sd_ack(),
 	.sd_ack_conf(),
-	.sd_conf(),
-	.sd_sdhc(),
-	.sd_buff_addr(),
-	.sd_buff_dout(),
-	.sd_buff_din(),
-	.sd_buff_wr(),
-	.sd_mounted()
+	.sd_conf(0),
+	.sd_sdhc(1)
 );
 
 
@@ -239,7 +240,7 @@ T80pa cpu
 
 always_comb begin
 	case({nMREQ, ~nM1 | nIORQ | nRD})
-	    'b01: cpu_din = ram_dout;
+	    'b01: cpu_din = ext_ena ? ram_dout : 8'hFF;
 	    'b10: cpu_din = asic_dout;
 	 default: cpu_din = 8'hFF;
 	endcase
@@ -277,7 +278,7 @@ sram ram
 	.addr(ram_addr),
 	.dout(ram_dout),
 	.din(cpu_dout),
-	.we(~(rom0_sel | rom1_sel | ram_wp) & ~nMREQ & ~nWR),
+	.we(~(rom0_sel | rom1_sel | ram_wp) & ~nMREQ & ~nWR & ext_ena),
 	.rd((fdd_read | ~nMREQ) & ~nRD),
 
 	.vid_addr1(vram_addr1),
@@ -299,6 +300,7 @@ reg  [7:0] ext_c;
 reg  [7:0] ext_d;
 wire [8:0] ext_c_off = 9'h40 + ext_c;
 wire [8:0] ext_d_off = 9'h40 + ext_d;
+wire       ext_ena   = ~(ext_ram & status[5]);
 
 wire       ext_c_sel = (addr[7:0] == 128);
 wire       ext_d_sel = (addr[7:0] == 129);
@@ -448,7 +450,7 @@ wire        fdd_sel  = fdd1_sel  | fdd2_sel;
 wire        fdd_io   = fdd1_io   | fdd2_io;
 wire        fdd_read = fdd1_read | fdd2_read;
 wire [24:0] fdd_addr = fdd1_sel ? {3'd5, fdd1_addr} : {3'd6, fdd2_addr};
-wire  [7:0] fdd_dout = fdd1_sel ? fdd1_dout : fdd2_dout;
+wire  [7:0] fdd_dout = fdd1_sel ? (fdd1w_ready ? fdd1w_dout : fdd1_dout) : fdd2_dout;
 
 wire[127:0] edsk_sig = "EXTENDED CPC DSK";
 wire[127:0] sig_pos  = edsk_sig >> (8'd120-(ioctl_addr[7:0]<<3));
@@ -458,17 +460,17 @@ wire        is_sdf   = ((ioctl_addr[19:0] == 983039) | (ioctl_addr[19:0] == 1019
 wire [19:0] fdd1_addr;
 wire [19:0] fdd1_size;
 wire        fdd1_rd;
-reg         fdd1_ready;
+reg         fdd1_ready, fdd1w_ready;
 reg         fdd1_side;
 wire        fdd1_io   = fdd1_sel & ~nIORQ & nM1;
 wire        fdd1_read = fdd1_rd & fdd1_io;
-wire  [7:0] fdd1_dout;
+wire  [7:0] fdd1_dout, fdd1w_dout;
 reg   [2:0] fdd1_type;
 
 always @(posedge clk_sys) begin
 	reg old_wr, old_wr2;
 	reg old_download;
-	reg old_m1;
+	reg old_mounted;
 	reg edsk;
 
 	old_wr <= nWR;
@@ -476,9 +478,12 @@ always @(posedge clk_sys) begin
 
 	old_wr2 <= ioctl_wr;
 	old_download <= ioctl_download;
+	old_mounted <= img_mounted;
+
 	if(cold_reset) begin
-		fdd1_ready <= 0;
-		fdd1_size  <= 0;
+		fdd1_ready  <= 0;
+		fdd1w_ready <= 0;
+		fdd1_size   <= 0;
 	end else begin
 		if(~old_download & ioctl_download & (ioctl_index == 1)) edsk <= 1;
 
@@ -486,21 +491,47 @@ always @(posedge clk_sys) begin
 			(ioctl_addr[19:0] < 16) & (sig_pos[7:0] != ioctl_dout)) edsk <= 0;
 
 		if(~ioctl_download & old_download & (ioctl_index == 1)) begin
-			fdd1_ready <= 1;
-			fdd1_size  <= ioctl_addr[19:0] + 1'b1;
+			fdd1_ready  <= 1;
+			fdd1w_ready <= 0;
+			fdd1_size   <= ioctl_addr[19:0] + 1'b1;
 			if(edsk) fdd1_type <= 6;
 			else if(is_sdf) fdd1_type <= 5;
 			else fdd1_type <= 4;
 		end
+
+		if(~old_mounted & img_mounted) begin
+			fdd1w_ready <= (img_size == 819200);
+			fdd1_ready  <= 0;
+		end
 	end
 end
+
+wd1793w fdd1w
+(
+	.*,
+
+	.ce(cpu_n),
+	.io_en(fdd1_io & fdd1w_ready),
+	.rd(~nRD),
+	.wr(~nWR),
+	.addr(addr[1:0]),
+	.din(cpu_dout),
+	.dout(fdd1w_dout),
+
+	.size_code(4),
+	.side(fdd1_side),
+	.ready(fdd1w_ready),
+	.drq(),
+	.intrq(),
+	.busy()
+);
 
 wd1793 fdd1
 (
 	.clk_sys(clk_sys),
 	.ce(cpu_n),
 	.reset(reset),
-	.io_en(fdd1_io),
+	.io_en(fdd1_io & fdd1_ready),
 	.rd(~nRD),
 	.wr(~nWR),
 	.addr(addr[1:0]),
