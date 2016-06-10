@@ -332,6 +332,8 @@ wire [4:0] page_cd  = hmpr[4:0];
 wire [1:0] mode3_hi = hmpr[6:5];
 wire       ext_ram  = hmpr[7] &  addr[15];
 
+wire       lptd_sel = (addr[7:0] == 232);
+wire       lpts_sel = (addr[7:0] == 233);
 wire       stat_sel = (addr[7:0] == 249);
 wire       lmpr_sel = (addr[7:0] == 250);
 wire       hmpr_sel = (addr[7:0] == 251);
@@ -359,15 +361,16 @@ end
 
 reg [7:0] asic_dout;
 always_comb begin
-	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel})
-		'b1XXXXXX: asic_dout = {soff, tape_in, 1'b0, hid_data};
-		'b01XXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
-		'b001XXXX: asic_dout = lmpr;
-		'b0001XXX: asic_dout = hmpr;
-		'b00001XX: asic_dout = vid_dout;
-		'b000001X: asic_dout = fdd_dout;
-		'b0000001: asic_dout = {2'b00, joystick_0[5:0] | joystick_1[5:0]};
-		'b0000000: asic_dout = 8'hFF;
+	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel, lptd_sel | lpts_sel})
+		'b1XXXXXXX: asic_dout = {soff, tape_in, 1'b0, hid_data};
+		'b01XXXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
+		'b001XXXXX: asic_dout = lmpr;
+		'b0001XXXX: asic_dout = hmpr;
+		'b00001XXX: asic_dout = vid_dout;
+		'b000001XX: asic_dout = fdd_dout;
+		'b0000001X: asic_dout = {2'b00, joystick_0[5:0] | joystick_1[5:0]};
+		'b00000001: asic_dout = 0; // fake LPT port.
+		'b00000000: asic_dout = 8'hFF;
 	endcase
 end
 
@@ -394,7 +397,7 @@ sigma_delta_dac #(8) dac_l
 (
 	.CLK(clk_sys),
 	.RESET(reset),
-	.DACin({1'b0, psg_ch_l} + {1'b0, ear_out, mic_out, tape_in, 5'b00000}),
+	.DACin({1'b0, psg_ch_l} + {1'b0, ear_out, mic_out, tape_in, 5'b00000} + vox_l),
 	.DACout(AUDIO_L)
 );
 
@@ -402,9 +405,28 @@ sigma_delta_dac #(8) dac_r
 (
 	.CLK(clk_sys),
 	.RESET(reset),
-	.DACin({1'b0, psg_ch_r} + {1'b0, ear_out, mic_out, tape_in, 5'b00000}),
+	.DACin({1'b0, psg_ch_r} + {1'b0, ear_out, mic_out, tape_in, 5'b00000} + vox_r),
 	.DACout(AUDIO_R)
 );
+
+reg [7:0] vox_l, vox_r;
+always @(posedge clk_sys) begin
+	reg old_we, old_stb;
+	reg [7:0] data;
+
+	if(reset) {vox_l, vox_r, old_stb, data} <= 0;
+	else begin
+		old_we <= port_we;
+		if(port_we & ~old_we) begin
+			if(lptd_sel) data <= cpu_dout;
+			if(lpts_sel) begin
+				if(~old_stb & cpu_dout[0]) vox_l <= data;
+				if(old_stb & ~cpu_dout[0]) vox_r <= data;
+				old_stb <= cpu_dout[0];
+			end
+		end
+	end
+end
 
 
 ////////////////////   VIDEO   ///////////////////

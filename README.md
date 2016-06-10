@@ -10,6 +10,7 @@
 - Original SAM joysticks (same as Sinclair 1 and 2).
 - Kempston joystick (useful for some ZX games).
 - SAA1099 sound chip.
+- Stereo SAM DAC on LPT1.
 - Mouse.
 
 
