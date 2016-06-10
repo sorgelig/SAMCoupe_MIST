@@ -155,6 +155,8 @@ end
 //////////////////   MIST ARM I/O   ///////////////////
 wire        ps2_kbd_clk;
 wire        ps2_kbd_data;
+wire        ps2_mouse_clk;
+wire        ps2_mouse_data;
 
 wire  [7:0] joystick_0;
 wire  [7:0] joystick_1;
@@ -186,15 +188,13 @@ mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 (
 	.*,
 	.conf_str(CONF_STR),
+	.sd_conf(0),
+	.sd_sdhc(1),
 
 	// unused
 	.joystick_analog_0(),
 	.joystick_analog_1(),
-	.ps2_mouse_clk(),
-	.ps2_mouse_data(),
-	.sd_ack_conf(),
-	.sd_conf(0),
-	.sd_sdhc(1)
+	.sd_ack_conf()
 );
 
 
@@ -360,7 +360,7 @@ end
 reg [7:0] asic_dout;
 always_comb begin
 	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel})
-		'b1XXXXXX: asic_dout = {soff, tape_in, 1'b0, kbdjoy};
+		'b1XXXXXX: asic_dout = {soff, tape_in, 1'b0, hid_data};
 		'b01XXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
 		'b001XXXX: asic_dout = lmpr;
 		'b0001XXX: asic_dout = hmpr;
@@ -432,7 +432,7 @@ video video
 );
 
 
-//////////////////   KEYBOARD   //////////////////
+////////////////////   HID   /////////////////////
 wire [11:1] Fn;
 wire  [2:0] mod;
 wire  [7:0] key_data;
@@ -440,9 +440,12 @@ reg         autostart;
 keyboard kbd( .*, .restart(rom0_sel & (addr == 0) & ~nMREQ & ~nRD));
 
 wire        kjoy_sel = (addr[7:0] == 'h1F);
-wire  [4:0] kbdjoy = key_data[4:0]
+(* keep *) wire  [4:0] hid_data = key_data[4:0] & mouse_data
 	& (addr[12] ? 5'b11111 : ~{joystick_0[1],  joystick_0[0], joystick_0[2], joystick_0[3], joystick_0[4] | joystick_0[5]})
 	& (addr[11] ? 5'b11111 : ~{joystick_1[4] | joystick_1[5], joystick_1[3], joystick_1[2], joystick_1[0],  joystick_1[1]});
+
+wire  [4:0] mouse_data;
+mouse mouse( .*, .dout(mouse_data), .rd(kbdr_sel & &addr[15:8] & nM1 & ~nIORQ & ~nRD));
 
 
 ///////////////////   FDC   ///////////////////
