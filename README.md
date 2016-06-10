@@ -6,13 +6,12 @@
 - 512KB of original internal memory.
 - Emulation for 4MB of extended memory.
 - Two disk drives with MGT, SDF and EDSK disk images support.
-- Original SAM joysticks (same as Sinclair 1 and 2)
-- Kempston joystick (useful for some ZX games)
-- SAA1099(based on [ZXUno](http://zxuno.speccy.org/index_e.shtml) model) sound chip.
+- Write support for MGT images.
+- Original SAM joysticks (same as Sinclair 1 and 2).
+- Kempston joystick (useful for some ZX games).
+- SAA1099 sound chip.
+- Mouse.
 
-### To do:
-- Disk write
-- Mouse support (undecided yet)
 
 ### Installation:
 Copy the *.rbf file at the root of the SD card. You can rename the file to core.rbf if you want the MiST to load it automatically at startup.
@@ -31,10 +30,15 @@ There is only basic support SDF and EDSK formats. If application has specific co
 
 **All formats share the same file extension - DSK**. If you have one of supported format with extensions like *.mgt, *.edsk or *.sdf, then rename them to *.dsk in order to load it in this emulator.
 
-All formats are currently supported only as **read-only**.
 Other formats like **SAD** can be converted to one of supported format by [SAMdisk](http://simonowen.com/samdisk/) utility.
 
-Core provides autostart for newly inserted disk into drive 1. Autostart works only on startup screen with stripes.
+Core supports write to **MGT** disks (disk size must be exactly 819200 bytes). Choose "Mount .DSK" if you want to write to disk. Disk will be mounted to drive 1. Write is not well tested yet. Formatting and raw read/write of the track is not supported.
+
+**MiST firmware has to be updated for writing capability (2016-06-10).**
+
+Core provides autostart for newly inserted disk into drive 1. Autostart works only on startup screen with stripes. Press any key after restart before loading the disk if you don't want autostart.
+
+Autostart is disabled for disks mounted for writing.
 
 ### Keyboard:
 Most PC keys are mapped to the same SAM Coupe keys.
