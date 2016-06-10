@@ -355,8 +355,8 @@ saa1099_mul_env mod_r(.vol(vol_mix_r[8:4]), .env(env_r), .out(env_out_r));
 
 always_comb begin
 	case({enable, outmix})
-		'b100, 'b101: out = {env_out_l, env_out_r};
-		'b001, 'b010: out = {vol_mix_l, vol_mix_r};
+		'b100, 'b101: out = {env_out_r, env_out_l};
+		'b001, 'b010: out = {vol_mix_r, vol_mix_l};
 		     default: out = 0;
 	endcase
 end
