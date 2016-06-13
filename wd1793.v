@@ -187,7 +187,7 @@ reg         buff_wr;
 
 // Reusable expressions
 wire        wStepDir   = wdstat_command[6] ? wdstat_command[5] : wdstat_stepdirection;
-wire  [7:0] wNextTrack = wStepDir ? disk_track - 8'd1 : disk_track + 8'd1;
+wire  [7:0] wNextTrack = wStepDir ? disk_track - 1'd1 : disk_track + 1'd1;
 wire [10:0]	wRdLengthMinus1 = data_rdlength - 1'b1;
 wire [10:0]	wBuffAddrPlus1  = byte_addr + 1'b1;
 
@@ -212,6 +212,7 @@ always @(posedge clk_sys or posedge reset) begin
 	integer   wait_time;
 	reg [3:0] read_timer;
 	reg [9:0] seektimer;
+	reg [7:0] ra_sector;
 
 	if(reset) begin
 		read_data <= 0;
@@ -233,6 +234,7 @@ always @(posedge clk_sys or posedge reset) begin
 		wdstat_pending <= 0;
 		watchdog_set <= 0;
 		seektimer <= 10'h3FF;
+		ra_sector <= 1;
 	end else if(ce) begin
 		old_wr <=wre;
 		old_rd <=rde;
@@ -270,7 +272,7 @@ always @(posedge clk_sys or posedge reset) begin
 					end
 
 				A_TRACK:  if (!s_busy) wdstat_track <= din;
-				A_SECTOR: if (!s_busy) wdstat_sector <= din;
+				A_SECTOR: if (!s_busy) {ra_sector, wdstat_sector} <= {din,din};
 				A_DATA:   wdstat_datareg <= din;
 			endcase
 		end
@@ -354,6 +356,7 @@ always @(posedge clk_sys or posedge reset) begin
 							if(size_code >= 5) begin
 								pending_state <= STATE_WAIT_READ;
 								state <= STATE_SDF_SEARCH;
+								sdf_start <= 0;
 							end else begin
 								state <= STATE_WAIT_READ;
 							end
@@ -378,24 +381,23 @@ always @(posedge clk_sys or posedge reset) begin
 							{s_wrfault,s_seekerr,s_crcerr,s_lostdata} <= 0;
 
 							wdstat_multisector <= 0;
-							state <= STATE_WAIT_READ;
 							data_rdlength <= 6;
 							read_type <= 0;
 
 							if(size_code >= 5) begin
-								read_addr[0] <= sdf_track;
-								read_addr[1] <= {7'b0, sdf_side};
-								read_addr[2] <= sdf_sector;
-								read_addr[3] <= sdf_sizecode;
-								read_addr[4] <= sdf_crc1;
-								read_addr[5] <= sdf_crc2;
+								sdf_start    <= sdf_next;
+								pending_state<= STATE_WAIT_READ;
+								state        <= STATE_SDF_SEARCH;
 							end else begin
 								read_addr[0] <= disk_track;
 								read_addr[1] <= {7'b0, side};
-								read_addr[2] <= wdstat_sector;
+								read_addr[2] <= ra_sector;
 								read_addr[3] <= wd_size_code;
 								read_addr[4] <= 0;
 								read_addr[5] <= 0;
+								if(ra_sector >= sectors_per_track) ra_sector <= 1;
+									else ra_sector <= ra_sector + 1'd1;
+								state <= STATE_WAIT_READ;
 							end
 						end
 					4'hE,	// READ TRACK
@@ -413,24 +415,37 @@ always @(posedge clk_sys or posedge reset) begin
 
 		STATE_SDF_SEARCH:
 			begin
-				sdf_addr <= 0;
+				sdf_addr <= sdf_start;
 				state    <= STATE_SDF_SEARCH_1;
 				spt_addr <= (side ? spt_size>>1 : 8'd0) + disk_track;
 			end
 
 		STATE_SDF_SEARCH_1:
 			begin
-				if(sdf_addr >= sdf_size) begin
+				if(read_type & (sdf_track == disk_track) & 
+					            (sdf_side == side) &
+					            (sdf_sector == wdstat_sector))
+				begin
+					state <= pending_state;
+				end
+				else
+				if(~read_type & (sdf_track == disk_track) & 
+					             (sdf_side == side))
+				begin
+					state        <= pending_state;
+					read_addr[0] <= sdf_trackf;
+					read_addr[1] <= sdf_sidef;
+					read_addr[2] <= sdf_sector;
+					read_addr[3] <= sdf_sizecode;
+					read_addr[4] <= sdf_crc1;
+					read_addr[5] <= sdf_crc2;
+				end
+				else
+				if(sdf_next == sdf_start) begin
 					state <= STATE_WAIT;
 					s_seekerr <= 1;
-				end else 
-				if((sdf_track == disk_track) & 
-					(sdf_side == side) &
-					(sdf_sector == wdstat_sector)) begin
-						state <= pending_state;
-					end
-				else begin
-					sdf_addr <= sdf_addr + 1'b1;
+				end else begin
+					sdf_addr <= sdf_next;
 				end
 			end
 
@@ -593,17 +608,19 @@ reg  [7:0] sdf_sector;        // Sector number 0..15
 reg  [7:0] sdf_crc1;          // ID field CRC MSB
 reg  [7:0] sdf_crc2;          // ID field CRC LSB
 reg [19:0] sdf_offset;
+reg  [7:0] sdf_trackf, sdf_sidef;
 
+wire[10:0] sdf_next = ((sdf_addr + 1'd1) >= sdf_size) ? 11'd0 : sdf_addr + 1'd1;
 reg [10:0] sdf_size;
-reg [10:0] sdf_addr;
-reg [53:0] sdf[1992];
+reg [10:0] sdf_addr, sdf_start;
+reg [69:0] sdf[1992];
 
 reg  [7:0] spt_size;
 reg  [7:0] spt_addr;
 reg  [7:0] spt[166];
 
 always @(posedge clk_sys) begin
-	{sdf_track,sdf_side,sdf_sector,sdf_sizecode,sdf_crc1,sdf_crc2,sdf_offset} <= sdf[sdf_addr];
+	{sdf_track,sdf_side,sdf_trackf,sdf_sidef,sdf_sector,sdf_sizecode,sdf_crc1,sdf_crc2,sdf_offset} <= sdf[sdf_addr];
 	sectors_per_track_var <= spt[spt_addr];
 end
 
@@ -621,9 +638,11 @@ always @(posedge clk_sys) begin
 	reg        is_sdf;
 	reg  [7:0] tsize[166];
 	reg [15:0] track_size, track_pos;
-	reg [19:0] offset;
+	reg [19:0] offset, offset1;
 	reg  [7:0] size_lo;
 	reg  [7:0] pos;
+	reg [10:0] secpos;
+	reg  [7:0] trackf, sidef;
 
 	old_active <= input_active;
 	if(input_active & ~old_active) begin
@@ -660,14 +679,14 @@ always @(posedge clk_sys) begin
 							if(idStatus != 0) begin 
 								sectors <= sectors - 1'd1;
 								hdr_pos <= 0;
-								sdf[sdf_size] <= {track,side,sector,sizecode,crc1,input_data,20'd0};
+								sdf[sdf_size] <= {track,side,1'b0,track,7'b0,side,sector,sizecode,crc1,input_data,20'd0};
 								sdf_size <= sdf_size + 1'd1;
 							end
 							crc2 <= input_data;
 							bcnt <= 11'd128 << sizecode;
 						end
 					8: begin
-							sdf[sdf_size] <= {track,side,sector,sizecode,crc1,crc2,input_addr};
+							sdf[sdf_size] <= {track,side,1'b0,track,7'b0,side,sector,sizecode,crc1,crc2,input_addr};
 							sdf_size <= sdf_size + 1'd1;
 							bcnt     <= bcnt - 1'd1;
 						end
@@ -703,12 +722,21 @@ always @(posedge clk_sys) begin
 					default:
 						if((track_pos >= 24) && sectors) begin
 							case(track_pos[2:0])
-								2: sector <= input_data;
-								3: sdf[sdf_size] <= {track,side,sector,input_data[1:0],8'd0,8'd0,offset};
-								4:	sdf_size <= sdf_size + 1'd1;
+								0: begin
+										trackf  <= input_data;
+										secpos  <= sdf_size;
+										offset1 <= offset;
+									end
+								1: sidef   <= input_data;
+								2: sector  <= input_data;
+								3: sizecode<= input_data[1:0];
 								6: size_lo <= input_data;
 								7: begin
-										offset <= offset + {input_data, size_lo};
+										if({input_data, size_lo}) begin
+											sdf[secpos] <= {track,side,trackf,sidef,sector,sizecode,8'd0,8'd0,offset1};
+											sdf_size <= sdf_size + 1'd1;
+											offset <= offset + {input_data, size_lo};
+										end
 										sectors <= sectors - 1'd1;
 									end
 								default:;

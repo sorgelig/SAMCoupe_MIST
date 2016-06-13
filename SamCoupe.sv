@@ -462,7 +462,7 @@ reg         autostart;
 keyboard kbd( .*, .restart(rom0_sel & (addr == 0) & ~nMREQ & ~nRD));
 
 wire        kjoy_sel = (addr[7:0] == 'h1F);
-(* keep *) wire  [4:0] hid_data = key_data[4:0] & mouse_data
+wire  [4:0] hid_data = key_data[4:0] & mouse_data
 	& (addr[12] ? 5'b11111 : ~{joystick_0[1],  joystick_0[0], joystick_0[2], joystick_0[3], joystick_0[4] | joystick_0[5]})
 	& (addr[11] ? 5'b11111 : ~{joystick_1[4] | joystick_1[5], joystick_1[3], joystick_1[2], joystick_1[0],  joystick_1[1]});
 
