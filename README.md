@@ -5,7 +5,7 @@
 - Real CPU frequency for ZX mode and full speed (6MHz) for other modes.
 - 512KB of original internal memory.
 - Emulation for 4MB of extended memory.
-- Two disk drives with MGT, SDF and EDSK disk images support.
+- Two disk drives with MGT, and EDSK disk images support (read and write).
 - Write support for MGT images.
 - Original SAM joysticks (same as Sinclair 1 and 2).
 - Kempston joystick (useful for some ZX games).
@@ -23,23 +23,20 @@ For PAL mode (RGBS output) you need to put [mist.ini](https://github.com/sorgeli
 ### Notes about supported formats:
 **MGT** is simple sector dump of SAM disks. All disks have the same size 819200 (for 80 track disks).
 
-**SDF** is the older (but still popular) format for disks with non-standard geometry. Currently only disks with sizes 983040 (80 tracks) and 1019904 (83 tracks) are supported.
+**SDF** is the older (but still popular) format for disks with non-standard geometry. You need to convert this format to EDSK by [SAMdisk](http://simonowen.com/samdisk/) utility.
 
 **EDSK** is the newer format for non-standard disks. Sizes up to 1024kb are supported.
+There is only basic support for EDSK format. If application has strong copy protection then it may not work.
 
-There is only basic support SDF and EDSK formats. If application has specific copy protection then it may not work.
+**All formats share the same file extension - DSK**. If you have one of supported format with extensions like *.mgt, or *.edsk, then rename them to *.dsk in order to load it in this emulator.
 
-**All formats share the same file extension - DSK**. If you have one of supported format with extensions like *.mgt, *.edsk or *.sdf, then rename them to *.dsk in order to load it in this emulator.
+Other formats like **SAD,SDF,TD0, etc.** can be converted to one of supported format by [SAMdisk](http://simonowen.com/samdisk/) utility.
 
-Other formats like **SAD** can be converted to one of supported format by [SAMdisk](http://simonowen.com/samdisk/) utility.
-
-Core supports write to **MGT** disks (disk size must be exactly 819200 bytes). Choose "Mount .DSK" if you want to write to disk. Disk will be mounted to drive 1. Write is not well tested yet. Formatting and raw read/write of the track is not supported.
+Core supports write to disks. Please note: only basic write is supported and it not well tested. Formatting and raw read/write of the track is not supported. You may prepare empty disks by PC utilities and then use them in this core.
 
 **MiST firmware has to be updated for writing capability (2016-06-10).**
 
 Core provides autostart for newly inserted disk into drive 1. Autostart works only on startup screen with stripes. Press any key after restart before loading the disk if you don't want autostart.
-
-Autostart is disabled for disks mounted for writing.
 
 ### Keyboard:
 Most PC keys are mapped to the same SAM Coupe keys.
@@ -48,12 +45,14 @@ Most PC keys are mapped to the same SAM Coupe keys.
 * F11 - NMI key
 * Ctrl-F11 - reset.
 * Alt-F11 - reset and unload disk images.
-* F12 - OSD
+* F12 - show OSD
 
 ### Other info:
 **CPU Throttle** option allow to turn on/off CPU slowdown. Originally SAM Coupe's CPU doesn't work at full speed when accessing ports and internal memory. If you switch it off then CPU will work at full speed. ZX mode will work at 6MHz as well if this option is off.
 
 **ZX mode speed** allows to switch between original SAM Coupe's ZX speed emulation through contention and real 3.5MHz frequency. It's useful for ZX import where beeper used for sound. In emulation mode the sound is garbled in these games while real frequency provides clean sound. (Arkanoid 48k is a good example).
+
+**External RAM** enables/disables support for additional 4MB of RAM. Disabling external RAM reduces startup time of some apps. Some apps can gain advantages if this option is enabled. Actual change of this option happens upon reset.
 
 ### Download precompiled binaries and system ROMs:
 Go to [releases](https://github.com/sorgelig/SAMCoupe_MIST/tree/master/releases) folder.
