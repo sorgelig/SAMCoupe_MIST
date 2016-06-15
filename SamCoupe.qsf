@@ -338,8 +338,7 @@ set_global_assignment -name VERILOG_FILE scandoubler.v
 set_global_assignment -name VERILOG_FILE osd.v
 set_global_assignment -name VERILOG_FILE vram.v
 set_global_assignment -name SYSTEMVERILOG_FILE video.sv
-set_global_assignment -name VERILOG_FILE wd1793.v
-set_global_assignment -name VERILOG_FILE secbuf.v
+set_global_assignment -name SYSTEMVERILOG_FILE wd1793.sv
 set_global_assignment -name VERILOG_FILE mist_io.v
 set_global_assignment -name SDC_FILE SamCoupe.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE SamCoupe.sv

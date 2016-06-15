@@ -59,7 +59,7 @@ module SamCoupe
 assign LED = ~(ioctl_erasing | ioctl_download | fdd2_io);
 
 `include "build_id.v"
-localparam CONF_STR = {"SAMCOUPE;;S0,DSK,Load Drive 1;F3,DSK,Load Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.20.",`BUILD_DATE};
+localparam CONF_STR = {"SAMCOUPE;;S0,DSK,Load Drive 1;F3,DSK,Load Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.21.",`BUILD_DATE};
 
 
 ////////////////////   CLOCKS   ///////////////////
