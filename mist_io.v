@@ -276,7 +276,7 @@ always @(negedge clk_sys) begin
 end
 
 // keyboard
-reg [7:0] ps2_kbd_fifo [(2**PS2_FIFO_BITS)-1:0];
+reg [7:0] ps2_kbd_fifo[1<<PS2_FIFO_BITS];
 reg [PS2_FIFO_BITS-1:0] ps2_kbd_wptr;
 reg [PS2_FIFO_BITS-1:0] ps2_kbd_rptr;
 
@@ -339,7 +339,7 @@ always@(posedge clk_sys) begin
 end
 
 // mouse
-reg [7:0] ps2_mouse_fifo [(2**PS2_FIFO_BITS)-1:0];
+reg [7:0] ps2_mouse_fifo[1<<PS2_FIFO_BITS];
 reg [PS2_FIFO_BITS-1:0] ps2_mouse_wptr;
 reg [PS2_FIFO_BITS-1:0] ps2_mouse_rptr;
 
