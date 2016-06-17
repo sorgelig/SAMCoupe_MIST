@@ -118,8 +118,9 @@ endgenerate
 
 reg         var_size  = 0;
 reg  [19:0] disk_size;
-wire [19:0] hs  = (layout & side) ? disk_size >> 1 : 20'd0;
-wire  [7:0] dts = {disk_track[6:0], side} >> layout;
+reg         layout_r;
+wire [19:0] hs  = (layout_r & side) ? disk_size >> 1 : 20'd0;
+wire  [7:0] dts = {disk_track[6:0], side} >> layout_r;
 always @* begin
 	case({var_size,size_code})
 				0: buff_a = hs + {{1'b0, dts, 4'b0000} + {dts, 3'b000} + {dts, 1'b0} + wdreg_sector - 1'd1,  7'd0};
@@ -296,12 +297,16 @@ always @(posedge clk_sys) begin
 				sd_block   <= 0;
 			end
 			disk_size <= img_size[19:0];
+			layout_r  <= layout;
 		end
 	end else begin
 		scan_active <= input_active;
 		scan_addr   <= input_addr;
 		scan_wr     <= input_wr;
-		disk_size   <= input_addr + 1'd1;
+		if(scan_active & ~input_active) begin
+			disk_size <= input_addr + 1'd1;
+			layout_r  <= layout;
+		end
 	end
 
 	if(reset & ~scan_active) begin
