@@ -597,6 +597,7 @@ wd1793 #(0) fdd2
 	.wp(1),
 
 	.size_code(4),
+	.layout(0),
 	.side(fdd2_side),
 	.ready(fdd2_ready),
 	

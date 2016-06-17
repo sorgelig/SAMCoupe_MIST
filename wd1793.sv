@@ -41,6 +41,7 @@ module wd1793 #(parameter RWMODE=0, EDSK=1)
 	input        wp,          // write protect
 
 	input  [2:0] size_code,
+	input        layout,      // 0 = Track-Side-Sector, 1 - Side-Track-Sector
 	input        side,
 	input        ready,
 
@@ -83,9 +84,6 @@ assign prepare   = EDSK ? scan_active : img_mounted;
 assign buff_addr = {buff_a[19:9], 9'd0} + byte_addr;
 assign buff_read = ((addr == A_DATA) && buff_rd);
 
-reg         var_size  = 0;
-wire  [2:0] disk_type = var_size ? 3'd5 : size_code;
-
 reg   [7:0] sectors_per_track, edsk_spt = 0;
 wire [10:0] sector_size = 11'd128 << wd_size_code;
 reg  [10:0] byte_addr;
@@ -94,6 +92,7 @@ reg   [1:0] wd_size_code;
 
 wire  [7:0] buff_dout;
 reg   [1:0] sd_block = 0;
+reg         format;
 generate
 	if(RWMODE) begin
 		wd1793_dpram sbuf
@@ -106,7 +105,7 @@ generate
 			.q_a(sd_buff_din),
 
 			.address_b(scan_active ? {2'b00, scan_addr[8:0]} : byte_addr),
-			.data_b(din),
+			.data_b(format ? 8'd0 : din),
 			.wren_b(wre & buff_wr & (addr == A_DATA) & ~scan_active),
 			.q_b(buff_dout)
 		);
@@ -117,17 +116,20 @@ generate
 	end
 endgenerate
 
-wire  [7:0] dts = {disk_track[6:0], side};
+reg         var_size  = 0;
+reg  [19:0] disk_size;
+wire [19:0] hs  = (layout & side) ? disk_size >> 1 : 20'd0;
+wire  [7:0] dts = {disk_track[6:0], side} >> layout;
 always @* begin
-	case(disk_type)
-				0: buff_a = {{1'b0, dts, 4'b0000} + {dts, 3'b000} + {dts, 1'b0} + wdreg_sector - 1'd1,  7'd0};
-				1: buff_a = {{dts, 4'b0000}                                     + wdreg_sector - 1'd1,  8'd0};
-				2: buff_a = {{dts, 3'b000}  + dts                               + wdreg_sector - 1'd1,  9'd0};
-				3: buff_a = {{dts, 2'b00}   + dts                               + wdreg_sector - 1'd1, 10'd0};
-				4: buff_a = {{dts, 3'b000} + {dts, 1'b0}                        + wdreg_sector - 1'd1,  9'd0};
+	case({var_size,size_code})
+				0: buff_a = hs + {{1'b0, dts, 4'b0000} + {dts, 3'b000} + {dts, 1'b0} + wdreg_sector - 1'd1,  7'd0};
+				1: buff_a = hs + {{dts, 4'b0000}                                     + wdreg_sector - 1'd1,  8'd0};
+				2: buff_a = hs + {{dts, 3'b000}  + dts                               + wdreg_sector - 1'd1,  9'd0};
+				3: buff_a = hs + {{dts, 2'b00}   + dts                               + wdreg_sector - 1'd1, 10'd0};
+				4: buff_a = hs + {{dts, 3'b000}  +{dts, 1'b0}                        + wdreg_sector - 1'd1,  9'd0};
 		default: buff_a = edsk_offset;
 	endcase
-	case(disk_type)
+	case({var_size,size_code})
 				0: sectors_per_track = 26;
 				1: sectors_per_track = 16;
 				2: sectors_per_track = 9;
@@ -135,7 +137,7 @@ always @* begin
 				4: sectors_per_track = 10;
 		default: sectors_per_track = edsk_spt;
 	endcase
-	case(disk_type)
+	case({var_size,size_code})
 				0: wd_size_code = 0;
 				1: wd_size_code = 1;
 				2: wd_size_code = 2;
@@ -275,7 +277,6 @@ always @(posedge clk_sys) begin
 	reg [9:0] seektimer;
 	reg [7:0] ra_sector;
 	reg       multisector;
-	reg       cmp_side, wdreg_side;
 	reg       write;
 	reg [5:0] ack;
 	reg       sd_busy;
@@ -286,17 +287,21 @@ always @(posedge clk_sys) begin
 
 	if(RWMODE) begin
 		old_mounted <= img_mounted;
-		if(old_mounted && ~img_mounted && EDSK) begin
-			scan_active<= 1;
-			scan_addr  <= 0;
-			scan_state <= 0;
-			scan_wr    <= 0;
-			sd_block   <= 0;
+		if(old_mounted && ~img_mounted) begin
+			if(EDSK) begin
+				scan_active<= 1;
+				scan_addr  <= 0;
+				scan_state <= 0;
+				scan_wr    <= 0;
+				sd_block   <= 0;
+			end
+			disk_size <= img_size[19:0];
 		end
 	end else begin
 		scan_active <= input_active;
 		scan_addr   <= input_addr;
 		scan_wr     <= input_wr;
+		disk_size   <= input_addr + 1'd1;
 	end
 
 	if(reset & ~scan_active) begin
@@ -321,7 +326,6 @@ always @(posedge clk_sys) begin
 		seektimer <= 'h3FF;
 		{ack, sd_wr, sd_rd, sd_busy} <= 0;
 		ra_sector <= 1;
-		cmp_side <= 0;
 	end else if(ce) begin
 
 		ack <= {ack[4:0], sd_ack};
@@ -387,13 +391,13 @@ always @(posedge clk_sys) begin
 						seektimer <= seektimer - 1'b1;
 						if(!seektimer) begin
 							byte_addr <= 0;
-							if((disk_type >= 5) && EDSK) begin
-								edsk_addr <= edsk_start;
+							if(var_size && EDSK) begin
+								if(~format) edsk_addr <= edsk_start;
 								spt_addr  <= (side ? spt_size>>1 : 8'd0) + disk_track;
 								state     <= STATE_SEARCH_1;
 							end else begin
 								if(!wdreg_sector || (wdreg_sector > sectors_per_track)) begin
-									s_seekerr <= 1;
+									if(~format) s_seekerr <= 1;
 									state <= STATE_ENDCOMMAND;
 								end else begin
 									state <= rw_type ? STATE_WAIT_READ : STATE_READ;
@@ -406,8 +410,7 @@ always @(posedge clk_sys) begin
 				begin
 					if(rw_type & (edsk_track == disk_track) &
 									 (edsk_side == side) &
-									 (~cmp_side | (edsk_sidef == wdreg_side)) &
-									 (edsk_sector == wdreg_sector)) begin
+									 (format | (edsk_sector == wdreg_sector))) begin
 						state <= STATE_WAIT_READ;
 					end
 					else
@@ -421,7 +424,7 @@ always @(posedge clk_sys) begin
 					end
 					else
 					if(edsk_next == edsk_start) begin
-						s_seekerr <= 1;
+						if(~format) s_seekerr <= 1;
 						state <= STATE_ENDCOMMAND;
 					end
 					else
@@ -515,7 +518,10 @@ always @(posedge clk_sys) begin
 						sd_block <= sd_block + 1'd1;
 						if(sd_block < blk_max) state <= STATE_WAIT_WRITE_1;
 						else begin
-							if(multisector) begin
+							if(format && EDSK && !edsk_next) begin
+								state <= STATE_ENDCOMMAND;
+							end else if(multisector) begin
+								edsk_addr <= edsk_next;
 								wdreg_sector <= wdreg_sector + 1'b1;
 								state <= STATE_SEARCH;
 							end else begin
@@ -578,6 +584,7 @@ always @(posedge clk_sys) begin
 			// End any command.
 			STATE_ENDCOMMAND:
 				begin
+					format  <= 0;
 					buff_rd <= 0;
 					if(RWMODE) buff_wr <=0;
 					state <= STATE_IDLE;
@@ -640,7 +647,8 @@ always @(posedge clk_sys) begin
 									state <= STATE_WAIT;
 								end
 							'h8, 'h9, // READ SECTORS
-							'hA, 'hB: // WRITE SECTORS
+							'hA, 'hB, // WRITE SECTORS
+							'hF:	    // WRITE TRACK
 								begin
 									// seek data
 									// 5: 0: read, 1: write
@@ -649,8 +657,6 @@ always @(posedge clk_sys) begin
 									// 2: E: some 15ms delay
 									// 1: C: check side matching?
 									// 0: 0
-									wdreg_side <= din[3];
-									cmp_side   <= din[1];
 
 									s_drq_busy <= 2'b01;
 									{s_wrfault,s_seekerr,s_crcerr,s_lostdata} <= 0;
@@ -658,11 +664,15 @@ always @(posedge clk_sys) begin
 									{write,buff_rd} <= din[5] ? 2'b10 : 2'b01;
 									if(RWMODE) buff_wr <= din[5];
 
+									if(din[6]) wdreg_sector <= 1;
+
+									format      <= din[6];
 									multisector <= din[4];
 									rw_type     <= 1;
 									write_data  <= 0;
 									read_data   <= 0;
 									edsk_start  <= 0;
+									edsk_addr   <= 0;
 									state       <= STATE_SEARCH;
 
 									if(s_readonly & din[5]) begin
@@ -679,10 +689,10 @@ always @(posedge clk_sys) begin
 									{write,buff_rd} <= 0;
 									if(RWMODE) buff_wr <=0;
 
+									format      <= 0;
 									multisector <= 0;
 									rw_type     <= 0;
 									read_data   <= 0;
-									cmp_side    <= 0;
 									edsk_start  <= edsk_next;
 									data_length <= 6;
 
@@ -703,8 +713,7 @@ always @(posedge clk_sys) begin
 									if(state != STATE_IDLE) state <= STATE_ABORT;
 										else {s_wrfault,s_seekerr,s_crcerr,s_lostdata, s_drq_busy} <= 0;
 								end
-							'hE,	// READ TRACK
-							'hF:	// WRITE TRACK
+							'hE:	// READ TRACK
 								begin
 									{s_wrfault,s_crcerr,s_lostdata} <= 0;
 									s_seekerr  <= 1;
