@@ -59,7 +59,7 @@ module SamCoupe
 assign LED = ~(ioctl_erasing | ioctl_download | fdd2_io);
 
 `include "build_id.v"
-localparam CONF_STR = {"SAMCOUPE;;S0,DSK,Load Drive 1;F3,DSK,Load Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.21.",`BUILD_DATE};
+localparam CONF_STR = {"SAMCOUPE;;S0,DSKMGTIMG,Load Drive 1;F3,DSKMGTIMG,Load Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.21.",`BUILD_DATE};
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -170,7 +170,7 @@ wire [24:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_download;
 wire        ioctl_erasing;
-wire  [4:0] ioctl_index;
+wire  [7:0] ioctl_index;
 reg         ioctl_force_erase = 0;
 
 wire [31:0] sd_lba;
@@ -522,6 +522,7 @@ wd1793 #(1) fdd1
 	.wp(~status[4]),
 
 	.size_code(4),
+	.layout(ioctl_index[7:6] == 2),
 	.side(fdd1_side),
 	.ready(fdd1_ready),
 	.prepare(fdd1_busy),
@@ -570,7 +571,7 @@ always @(posedge clk_sys) begin
 
 	old_download <= ioctl_download;
 	if(cold_reset) fdd2_ready <= 0;
-		else if(~ioctl_download & old_download & (ioctl_index == 2)) fdd2_ready <= 1;
+		else if(~ioctl_download & old_download & (ioctl_index[4:0] == 2)) fdd2_ready <= 1;
 end
 
 wd1793 #(0) fdd2
@@ -585,7 +586,7 @@ wd1793 #(0) fdd2
 	.din(cpu_dout),
 	.dout(fdd2_dout),
 
-	.input_active(ioctl_download & (ioctl_index == 2)),
+	.input_active(ioctl_download & (ioctl_index[4:0] == 2)),
 	.input_addr(ioctl_addr[19:0]),
 	.input_data(ioctl_dout),
 	.input_wr(ioctl_wr),
@@ -594,10 +595,8 @@ wd1793 #(0) fdd2
 	.buff_read(fdd2_rd),
 	.buff_din(ram_dout),
 
-	.wp(1),
-
 	.size_code(4),
-	.layout(0),
+	.layout(ioctl_index[7:6] == 2),
 	.side(fdd2_side),
 	.ready(fdd2_ready),
 	
