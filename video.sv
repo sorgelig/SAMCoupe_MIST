@@ -55,6 +55,7 @@ module video
 	input         soff,
 	output  [1:0] video_mode,
 	input   [1:0] mode3_hi,
+	input         midi_tx,
 
 	// OSD IO interface
 	input         SPI_SCK,
@@ -137,7 +138,7 @@ reg  [8:0] hc  = 0;
 reg  [8:0] vc  = 0;
 wire [4:0] col = {~hc[7], hc[6:3]};
 
-wire [7:0] lpen;
+reg  [7:0] lpen;
 reg  [7:0] hpen;
 reg  [3:0] border;
 
@@ -198,7 +199,7 @@ always @(posedge clk_sys) begin
 
 		if(~io_contention) begin
 			// due to permanent 1/8 I/O contention only upper 5 bits of counter are meaningful.
-			lpen   <= {{5{paper}} & col, 2'd0, index[0]};
+			lpen   <= {{5{paper}} & col, 1'b0, midi_tx, index[0]};
 			hpen   <= (soff | (vc>192)) ? 8'd192 : vc[7:0];
 			border <= border_color;
 			m3_idx <= mode3_hi;

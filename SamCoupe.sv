@@ -59,7 +59,7 @@ module SamCoupe
 assign LED = ~(ioctl_erasing | ioctl_download | fdd2_io);
 
 `include "build_id.v"
-localparam CONF_STR = {"SAMCOUPE;;S0,DSKMGTIMG,Load Drive 1;F3,DSKMGTIMG,Load Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.21.",`BUILD_DATE};
+localparam CONF_STR = {"SAMCOUPE;;S0,DSKMGTIMG,Drive 1;F3,DSKMGTIMG,Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.21.",`BUILD_DATE};
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -74,6 +74,7 @@ pll pll
 	.locked(locked)
 );
 
+reg  ce_1m;
 reg  ce_psg;   //8MHz
 reg  ce_6mp;
 reg  ce_6mn;
@@ -93,6 +94,7 @@ always @(negedge clk_sys) begin
 	reg [4:0] zx_div = 0;
 	reg       old_zx, orig_en, zx_en;
 	reg [1:0] timeout;
+	reg [6:0] m_div;
 
 	counter <=  counter + 1'd1;
 	ce_24m  <= !counter[1:0];
@@ -128,6 +130,10 @@ always @(negedge clk_sys) begin
 	psg_div <= psg_div + 1'd1;
 	if(psg_div == 11) psg_div <= 0;
 	ce_psg  <= !psg_div;
+
+	m_div <= m_div + 1'd1;
+	if(m_div == 95) m_div <= 0;
+	ce_1m  <= !m_div;
 end
 
 // Contention model
@@ -209,7 +215,7 @@ wire        nRD;
 wire        nWR;
 wire        nRFSH;
 wire        nBUSACK;
-wire        nINT   = ~(INT_line | INT_frame);
+wire        nINT   = ~(INT_line | INT_frame | INT_midi);
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
 wire        warm_reset =  mod[2] & Fn[11];
@@ -340,6 +346,7 @@ wire       lpts_sel = (addr[7:0] == 233);
 wire       stat_sel = (addr[7:0] == 249);
 wire       lmpr_sel = (addr[7:0] == 250);
 wire       hmpr_sel = (addr[7:0] == 251);
+wire       midi_sel = (addr[7:0] == 253);
 wire       kbdr_sel = (addr[7:0] == 254);
 wire       brdr_sel = (addr[7:0] == 254);
 wire       fdd1_sel = (addr[7:0] >= 224) & (addr[7:0] <= 231);
@@ -366,7 +373,7 @@ reg [7:0] asic_dout;
 always_comb begin
 	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel, lptd_sel | lpts_sel})
 		'b1XXXXXXX: asic_dout = {soff, tape_in, 1'b0, hid_data};
-		'b01XXXXXX: asic_dout = {key_data[7:5], 1'b1, ~INT_frame, 2'b11, ~INT_line};
+		'b01XXXXXX: asic_dout = {key_data[7:5], ~INT_midi, ~INT_frame, 2'b11, ~INT_line};
 		'b001XXXXX: asic_dout = lmpr;
 		'b0001XXXX: asic_dout = hmpr;
 		'b00001XXX: asic_dout = vid_dout;
@@ -377,6 +384,37 @@ always_comb begin
 	endcase
 end
 
+reg        INT_midi;
+reg        midi_tx;
+always @(posedge clk_sys) begin
+	reg       old_we;
+	reg [8:0] tx_time;
+	reg       available;
+	
+	if(reset) begin
+		INT_midi <=0;
+		tx_time <= 0;
+		midi_tx <= 0;
+		available <= 0;
+	end else begin
+		if(ce_1m) begin
+			if(tx_time) begin
+				tx_time <= tx_time - 1'd1;
+				if(tx_time == 15) INT_midi <= 1;
+			end else begin
+				{INT_midi, midi_tx} <= 0;
+				if(available) begin
+					midi_tx   <= 1;
+					tx_time   <= 319;
+					available <= 0;
+				end
+			end
+		end
+
+		old_we <= port_we;
+		if(port_we & ~old_we & midi_sel) available <= 1;
+	end
+end
 
 ////////////////////   AUDIO   ///////////////////
 wire [7:0] psg_ch_l;
