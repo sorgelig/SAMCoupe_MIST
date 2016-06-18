@@ -5,11 +5,13 @@
 - Real CPU frequency for ZX mode and full speed (6MHz) for other modes.
 - 512KB of original internal memory.
 - Emulation for 4MB of extended memory.
-- Two disk drives with MGT, and EDSK disk images support (read and write).
-- Write support for MGT images.
+- Two disk drives.
+- Support for disk formats: EDSK, MGT, IMG.
+- Write support (Drive 1).
 - Original SAM joysticks (same as Sinclair 1 and 2).
 - Kempston joystick (useful for some ZX games).
 - SAA1099 sound chip.
+- SID MOS6581 sound chip.
 - Stereo SAM DAC on LPT1.
 - Mouse.
 
@@ -23,18 +25,18 @@ For PAL mode (RGBS output) you need to put [mist.ini](https://github.com/sorgeli
 ### Notes about supported formats:
 **MGT** is simple sector dump of SAM disks. All disks have the same size 819200 (for 80 track disks).
 
-**SDF** is the older (but still popular) format for disks with non-standard geometry. You need to convert this format to EDSK by [SAMdisk](http://simonowen.com/samdisk/) utility.
+**IMG** is the same as **MGT** but uses different layout. It's used on +D FDC add-on (ZX Spectrum).
 
-**EDSK** is the newer format for non-standard disks. Sizes up to 1024kb are supported.
+**EDSK** is format for non-standard disks. Sizes up to 1024kb are supported.
 There is only basic support for EDSK format. If application has strong copy protection then it may not work.
 
-**All formats share the same file extension - DSK**. If you have one of supported format with extensions like *.mgt, or *.edsk, then rename them to *.dsk in order to load it in this emulator.
+**MGT and EDSK formats may have common file extension - DSK. IMG format should use extension IMG for correct detection**.
 
 Other formats like **SAD,SDF,TD0, etc.** can be converted to one of supported format by [SAMdisk](http://simonowen.com/samdisk/) utility.
 
-Core supports write to disks. Please note: only basic write is supported and it not well tested. Formatting and raw read/write of the track is not supported. You may prepare empty disks by PC utilities and then use them in this core.
+Write feature isn't mature yet. Make backup of important disks before write to them.
 
-**MiST firmware has to be updated for writing capability (2016-06-10).**
+**MiST firmware must be updated to release 2016-06-19 or later for correct disk functionality!**
 
 Core provides autostart for newly inserted disk into drive 1. Autostart works only on startup screen with stripes. Press any key after restart before loading the disk if you don't want autostart.
 
