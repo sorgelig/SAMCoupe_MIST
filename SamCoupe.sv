@@ -341,16 +341,20 @@ wire [4:0] page_cd  = hmpr[4:0];
 wire [1:0] mode3_hi = hmpr[6:5];
 wire       ext_ram  = hmpr[7] &  addr[15];
 
+wire       sid_sel  = (addr[7:0] == 212);
+wire       fdd1_sel = (addr[7:0] >= 224) & (addr[7:0] <= 231);
 wire       lptd_sel = (addr[7:0] == 232);
 wire       lpts_sel = (addr[7:0] == 233);
+wire       fdd2_sel = (addr[7:0] >= 240) & (addr[7:0] <= 247);
+//clut, hpen, lpen  = (addr[7:0] == 248);
 wire       stat_sel = (addr[7:0] == 249);
 wire       lmpr_sel = (addr[7:0] == 250);
 wire       hmpr_sel = (addr[7:0] == 251);
+//         vmpr_sel = (addr[7:0] == 252);
 wire       midi_sel = (addr[7:0] == 253);
 wire       kbdr_sel = (addr[7:0] == 254);
 wire       brdr_sel = (addr[7:0] == 254);
-wire       fdd1_sel = (addr[7:0] >= 224) & (addr[7:0] <= 231);
-wire       fdd2_sel = (addr[7:0] >= 240) & (addr[7:0] <= 247);
+//         attr_sel = (addr[7:0] == 255);
 
 always @(posedge clk_sys) begin
 	reg old_we;
@@ -434,19 +438,19 @@ saa1099 psg
 	.out_r(psg_ch_r)
 );
 
-sigma_delta_dac #(8) dac_l
+sigma_delta_dac #(18) dac_l
 (
 	.CLK(clk_sys),
-	.RESET(reset),
-	.DACin({1'b0, psg_ch_l} + {1'b0, ear_out, mic_out, tape_in, 5'b00000} + vox_l),
+	.RESET(0),
+	.DACin({1'b0, psg_ch_l, psg_ch_l, 2'd0} + {1'b0, ear_out, mic_out, tape_in, 15'd0} + {vox_l,vox_l,2'd0} + sid_out),
 	.DACout(AUDIO_L)
 );
 
-sigma_delta_dac #(8) dac_r
+sigma_delta_dac #(18) dac_r
 (
 	.CLK(clk_sys),
-	.RESET(reset),
-	.DACin({1'b0, psg_ch_r} + {1'b0, ear_out, mic_out, tape_in, 5'b00000} + vox_r),
+	.RESET(0),
+	.DACin({1'b0, psg_ch_r, psg_ch_r, 2'd0} + {1'b0, ear_out, mic_out, tape_in, 15'd0} + {vox_r,vox_r,2'd0} + sid_out),
 	.DACout(AUDIO_R)
 );
 
@@ -468,6 +472,37 @@ always @(posedge clk_sys) begin
 		end
 	end
 end
+
+// SID uses signed samples and requires special handling
+softmuter sid_muter
+(
+	.clk_sys(clk_sys),
+	.ce(ce_1m),
+
+	.enable(sid_act),
+	.vol_in({~sid_outraw[17], sid_outraw[16:0]}),
+	.vol_out(sid_out)
+);
+
+wire [17:0] sid_out;
+wire [17:0] sid_outraw;
+wire        sid_act;
+sid_top sid
+(
+	.clock(clk_sys),
+	.reset(reset),
+	.addr(addr[12:8]),
+	.wren(port_we && sid_sel && video_mode), // disable in ZX mode
+	.wdata(cpu_dout),
+
+	.comb_wave_l(0),
+	.comb_wave_r(0),
+	.extfilter_en(1),
+
+	.active(sid_act),
+	.start_iter(ce_1m),
+	.sample_left(sid_outraw)
+);
 
 
 ////////////////////   VIDEO   ///////////////////
@@ -645,5 +680,27 @@ wd1793 #(0) fdd2
 	.sd_buff_dout(0),
 	.sd_buff_wr(0)
 );
+
+endmodule
+
+module softmuter
+(
+	input         clk_sys,
+	input         ce,
+	
+	input         enable,
+	input  [17:0] vol_in,
+	output [17:0] vol_out
+);
+
+reg [17:0] att = '1;
+assign vol_out = (vol_in > att) ? vol_in - att : 18'd0;
+
+always @(posedge clk_sys) begin
+	if(ce) begin
+		if( enable &&   att) att <= att - 1'd1;
+		if(~enable && ~&att) att <= att + 1'd1;
+	end
+end
 
 endmodule
