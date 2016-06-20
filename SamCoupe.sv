@@ -341,20 +341,19 @@ wire [4:0] page_cd  = hmpr[4:0];
 wire [1:0] mode3_hi = hmpr[6:5];
 wire       ext_ram  = hmpr[7] &  addr[15];
 
-wire       sid_sel  = (addr[7:0] == 212);
-wire       fdd1_sel = (addr[7:0] >= 224) & (addr[7:0] <= 231);
-wire       lptd_sel = (addr[7:0] == 232);
-wire       lpts_sel = (addr[7:0] == 233);
-wire       fdd2_sel = (addr[7:0] >= 240) & (addr[7:0] <= 247);
-//clut, hpen, lpen  = (addr[7:0] == 248);
-wire       stat_sel = (addr[7:0] == 249);
-wire       lmpr_sel = (addr[7:0] == 250);
-wire       hmpr_sel = (addr[7:0] == 251);
-//         vmpr_sel = (addr[7:0] == 252);
-wire       midi_sel = (addr[7:0] == 253);
-wire       kbdr_sel = (addr[7:0] == 254);
-wire       brdr_sel = (addr[7:0] == 254);
-//         attr_sel = (addr[7:0] == 255);
+wire       sid_sel  = (addr[7:0] == 212); // D4
+wire       fdd_sel  = &addr[7:5] & ~addr[3]; // 224-231(E0-E7), 240-247(F0-F7)
+wire       lptd_sel = (addr[7:0] == 232); // E8
+wire       lpts_sel = (addr[7:0] == 233); // E9
+//clut, hpen, lpen  = (addr[7:0] == 248); // F8
+wire       stat_sel = (addr[7:0] == 249); // F9
+wire       lmpr_sel = (addr[7:0] == 250); // FA
+wire       hmpr_sel = (addr[7:0] == 251); // FB
+//         vmpr_sel = (addr[7:0] == 252); // FC
+wire       midi_sel = (addr[7:0] == 253); // FD
+wire       kbdr_sel = (addr[7:0] == 254); // FE
+wire       brdr_sel = (addr[7:0] == 254); // FE
+//         attr_sel = (addr[7:0] == 255); // FF
 
 always @(posedge clk_sys) begin
 	reg old_we;
@@ -381,7 +380,7 @@ always_comb begin
 		'b001XXXXX: asic_dout = lmpr;
 		'b0001XXXX: asic_dout = hmpr;
 		'b00001XXX: asic_dout = vid_dout;
-		'b000001XX: asic_dout = fdd_dout;
+		'b000001XX: asic_dout = fdd1_io ? fdd1_dout : fdd2_dout;
 		'b0000001X: asic_dout = {2'b00, joystick_0[5:0] | joystick_1[5:0]};
 		'b00000001: asic_dout = 0; // fake LPT port.
 		'b00000000: asic_dout = 8'hFF;
@@ -547,14 +546,12 @@ mouse mouse( .*, .dout(mouse_data), .rd(kbdr_sel & &addr[15:8] & nM1 & ~nIORQ & 
 
 
 ///////////////////   FDC   ///////////////////
-wire        fdd_sel  = fdd1_sel | fdd2_sel;
-wire  [7:0] fdd_dout = fdd1_sel ? fdd1_dout : fdd2_dout;
 
 // FDD1
 wire        fdd1_busy;
 reg         fdd1_ready;
 reg         fdd1_side;
-wire        fdd1_io   = fdd1_sel & ~nIORQ & nM1;
+wire        fdd1_io   = fdd_sel & ~addr[4] & ~nIORQ & nM1;
 wire  [7:0] fdd1_dout;
 
 always @(posedge clk_sys) begin
@@ -631,7 +628,7 @@ wire [19:0] fdd2_addr;
 wire        fdd2_rd;
 reg         fdd2_ready;
 reg         fdd2_side;
-wire        fdd2_io   = fdd2_sel & ~nIORQ & nM1;
+wire        fdd2_io   = fdd_sel & addr[4] & ~nIORQ & nM1;
 wire        fdd2_read = fdd2_rd & fdd2_io;
 wire  [7:0] fdd2_dout;
 
