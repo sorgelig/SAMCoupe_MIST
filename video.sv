@@ -261,7 +261,7 @@ end
 reg [7:0] port_data;
 always_comb begin
 	casex({vmpr_sel, attr_sel, lpen_sel, hpen_sel})
-		'b1XXX: port_data = vmpr;
+		'b1XXX: port_data = {1'b1, vmpr};
 		'b01XX: port_data = attr;
 		'b001X: port_data = lpen;
 		'b0001: port_data = hpen;
