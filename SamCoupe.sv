@@ -375,7 +375,7 @@ end
 reg [7:0] asic_dout;
 always_comb begin
 	casex({kbdr_sel, stat_sel, lmpr_sel, hmpr_sel, vid_sel, fdd_sel, kjoy_sel, lptd_sel | lpts_sel})
-		'b1XXXXXXX: asic_dout = {soff, tape_in, 1'b0, hid_data};
+		'b1XXXXXXX: asic_dout = {soff, ~tape_in, 1'b0, hid_data};
 		'b01XXXXXX: asic_dout = {key_data[7:5], ~INT_midi, ~INT_frame, 2'b11, ~INT_line};
 		'b001XXXXX: asic_dout = lmpr;
 		'b0001XXXX: asic_dout = hmpr;
