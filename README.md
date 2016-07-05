@@ -3,6 +3,7 @@
 ### Features:
 - Fully functional SAM Coupe with precise CPU and Video timings.
 - Real CPU frequency for ZX mode and full speed (6MHz) for other modes.
+- Turbo up to 24MHz
 - 512KB of original internal memory.
 - Emulation for 4MB of extended memory.
 - Two disk drives.
@@ -15,6 +16,7 @@
 - Stereo SAM DAC on LPT1.
 - Mouse.
 
+**MiST firmware must be updated to release 2016-06-26 or later for correct OSD and disk functionality!**
 
 ### Installation:
 Copy the *.rbf file at the root of the SD card. You can rename the file to core.rbf if you want the MiST to load it automatically at startup.
@@ -36,8 +38,6 @@ Other formats like **SAD,SDF,TD0, etc.** can be converted to one of supported fo
 
 Write feature isn't mature yet. Make backup of important disks before write to them.
 
-**MiST firmware must be updated to release 2016-06-19 or later for correct disk functionality!**
-
 Core provides autostart for newly inserted disk into drive 1. Autostart works only on startup screen with stripes. Press any key after restart before loading the disk if you don't want autostart.
 
 ### Keyboard:
@@ -50,9 +50,19 @@ Most PC keys are mapped to the same SAM Coupe keys.
 * F12 - show OSD
 
 ### Other info:
-**CPU Throttle** option allow to turn on/off CPU slowdown. Originally SAM Coupe's CPU doesn't work at full speed when accessing ports and internal memory. If you switch it off then CPU will work at full speed. ZX mode will work at 6MHz as well if this option is off.
+**CPU Speed** modes:
+- Normal - original SAM coupe 6MHz clock with wait states (full 6MHz while accessing extended RAM).
+- 6MHz - full 6MHz speed without wait states.
+- 9.6MHz, 12MHz, 24MHz - turbo modes.
 
-**ZX mode speed** allows to switch between original SAM Coupe's ZX speed emulation through contention and real 3.5MHz frequency. It's useful for ZX import where beeper used for sound. In emulation mode the sound is garbled in these games while real frequency provides clean sound. (Arkanoid 48k is a good example).
+**ZX mode speed**:
+- Emulated - original SAM Coupe ZX CPU emulation (through wait states).
+- Full - full SAM Coupe CPU clock.
+- Real - original ZX CPU clock (3.5MHz).
+
+*Note 1*: Real mode is useful for ZX import where beeper used for sound. In emulation and full modes the sound is garbled in such games while real frequency provides clean sound. (Arkanoid 48k is a good example).
+
+*Note2*: Emulated mode is true only for Normal CPU speed. For other CPU speeds this value equals to Full speed.
 
 **External RAM** enables/disables support for additional 4MB of RAM. Disabling external RAM reduces startup time of some apps. Some apps can gain advantages if this option is enabled. Actual change of this option happens upon reset.
 
