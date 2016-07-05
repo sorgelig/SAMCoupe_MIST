@@ -55,7 +55,7 @@ module mist_io #(parameter STRLEN=0, parameter PS2DIV=100)
 	output      [1:0] switches,
 	output            scandoubler_disable,
 
-	output reg [7:0]  status,
+	output reg [31:0] status,
 
 	// SD config
 	input             sd_conf,
@@ -96,7 +96,7 @@ reg [7:0] b_data;
 reg [6:0] sbuf;
 reg [7:0] cmd;
 reg [2:0] bit_cnt;    // counts bits 0-7 0-7 ...
-reg [7:0] byte_cnt;   // counts bytes
+reg [9:0] byte_cnt;   // counts bytes
 reg [7:0] but_sw;
 reg [2:0] stick_idx;
 
@@ -181,7 +181,7 @@ always@(posedge SPI_SCK or posedge CONF_DATA0) begin
 
 		// finished reading command byte
       if(bit_cnt == 7) begin
-			if(byte_cnt != 8'd255) byte_cnt <= byte_cnt + 8'd1;
+			if(~&byte_cnt) byte_cnt <= byte_cnt + 8'd1;
 			if(byte_cnt == 0) begin
 				cmd <= spi_dout;
 
@@ -217,7 +217,7 @@ always@(posedge SPI_SCK or posedge CONF_DATA0) begin
 							ps2_kbd_wptr <= ps2_kbd_wptr + 1'd1;
 						end
 				
-					8'h15: status <= spi_dout;
+					8'h15: status[7:0] <= spi_dout;
 				
 					// send SD config IO -> FPGA
 					// flag that download begins
@@ -253,6 +253,9 @@ always@(posedge SPI_SCK or posedge CONF_DATA0) begin
 
 					// send image info
 					8'h1d: if(byte_cnt<5) img_size[(byte_cnt-1)<<3 +:8] <= spi_dout;
+
+					// status, 32bit version
+					8'h1e: if(byte_cnt<5) status[(byte_cnt-1)<<3 +:8] <= spi_dout;
 					default: ;
 				endcase
 			end

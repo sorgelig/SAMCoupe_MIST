@@ -56,6 +56,7 @@ module video
 	output  [1:0] video_mode,
 	input   [1:0] mode3_hi,
 	input         midi_tx,
+	input         full_zx,
 
 	// OSD IO interface
 	input         SPI_SCK,
@@ -72,7 +73,7 @@ module video
 
 wire  [2:0] cpu_slot  = 5;
 assign io_contention  = hc[2:0] != cpu_slot;
-assign mem_contention = (fetch | (!mode & hc[6])) ? hc[2:0] != cpu_slot : hc[1:0] != cpu_slot[1:0];
+assign mem_contention = (fetch | (!mode & !full_zx & hc[6])) ? hc[2:0] != cpu_slot : hc[1:0] != cpu_slot[1:0];
 
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;

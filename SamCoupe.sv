@@ -59,7 +59,7 @@ module SamCoupe
 assign LED = ~(ioctl_erasing | ioctl_download | fdd2_io);
 
 `include "build_id.v"
-localparam CONF_STR = {"SAMCOUPE;;S0,DSKMGTIMG,Drive 1;F3,DSKMGTIMG,Drive 2;O4,Drive 1 Write,prohibit,allow;O1,CPU Throttle,on,off;O2,ZX Mode Speed,emulated,real;O5,External RAM,on,off;V0,v1.25.",`BUILD_DATE};
+localparam CONF_STR = {"SAMCOUPE;;S,DSKMGTIMG,Drive 1;F,DSKMGTIMG,Drive 2;O4,Drive 1 Write,Prohibit,Allow;O8A,CPU Speed,Normal,6MHz,9.6MHz,12MHz,24MHz;OBC,ZX Mode Speed,Emulated,Full,Real;O5,External RAM,on,off;V,v1.25.",`BUILD_DATE};
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -82,58 +82,80 @@ reg  ce_24m;
 reg  cpu_en;
 reg  cpu_p;
 reg  cpu_n;
+
 wire ce_cpu_p = cpu_en & cpu_p;
 wire ce_cpu_n = cpu_en & cpu_n;
-wire ce_bus   = ce_6mn;
 
-wire real_zx = (!video_mode && status[2] && ~status[1]);
+reg [2:0] req_speed, cpu_speed = 0;
+always_comb begin
+	casex({turbo_boot, !video_mode && (status[12:11] == 2)})
+		'b1X: req_speed = 5;
+		'b01: req_speed = 0;
+		'b00: req_speed = 3'd1 + status[10:8];
+	default: req_speed = 1;
+	endcase
+end
+
+reg turbo_boot = 0;
+always @(posedge clk_sys) begin
+	reg old_rd, skip;
+	old_rd <= port_rd;
+
+	if(reset) {skip,turbo_boot} <= 1;
+	else if(~old_rd & port_rd & kbdr_sel) begin
+		skip <= 1;
+		if(skip) turbo_boot <= 0;
+	end
+end
+
+wire [4:0] cpu_max[6] = '{26, 15, 15, 9, 7, 3};
+wire [4:0] cpu_mid[6] = '{13,  8,  8, 5, 4, 2};
 
 always @(negedge clk_sys) begin
 	reg [3:0] counter = 0;
 	reg [3:0] psg_div = 0;
-	reg [4:0] zx_div = 0;
-	reg       old_zx, orig_en, zx_en;
-	reg [1:0] timeout;
-	reg [6:0] m_div;
+	reg [4:0] cpu_div = 0;
+	reg [6:0] meg_div = 0;
+	reg       cnt_en  = 1;
+	reg       skip;
 
 	counter <=  counter + 1'd1;
 	ce_24m  <= !counter[1:0];
 	ce_6mp  <= !counter[3] & !counter[2:0];
 	ce_6mn  <=  counter[3] & !counter[2:0];
-	if(orig_en) begin
-		cpu_p <= !counter[3] & !counter[2:0];
-		cpu_n <=  counter[3] & !counter[2:0];
+
+	{cpu_p, cpu_n} <= 0;
+	if(cnt_en & ~(ram_busy & (cpu_speed >= 3) & (cpu_div == (cpu_mid[cpu_speed])))) begin
+		cpu_div <= cpu_div + 1'd1;
+		if(cpu_div >= cpu_max[cpu_speed]) cpu_div <= 0;
+
+		if(!cpu_div) cpu_en <= ~((cpu_speed == 1) & (ram_wait | io_wait));
+
+		cpu_p <= (cpu_div == 0);
+		cpu_n <= (cpu_div == cpu_mid[cpu_speed]);
 	end
 
-	if(!counter[3:0]) cpu_en <= ~(ram_wait | io_wait) | zx_en;
-
-	zx_div <= zx_div + 1'd1;
-	if(zx_div == 26) zx_div <= 0;
-	if(zx_en) begin
-		cpu_p <= (zx_div == 0);
-		cpu_n <= (zx_div == 13);
+	if((cpu_speed != req_speed) & nWR & nRD & ce_cpu_p) begin
+		cpu_div <= 1;
+		cnt_en  <= 0;
+		skip    <= 0;
 	end
 
-	if(((old_zx != real_zx) & cpu_en) | (~zx_en & ~orig_en)) begin
-		if(orig_en & (counter[3:0] == 1)) orig_en <= 0;
-		if(zx_en   & (zx_div == 1)) zx_en <= 0;
-		if(~orig_en & ~zx_en & (zx_div == 1)) timeout <= timeout - 1'b1;
-		if(!timeout) begin
-			old_zx <= real_zx;
-			if(real_zx) zx_en <= 1;
-				else orig_en <= 1;
+	if(~cnt_en & !counter) begin
+		skip <= 1;
+		if(skip) begin
+			cpu_speed <= req_speed;
+			cnt_en    <= 1;
 		end
-	end else begin
-		timeout <= 3;
 	end
 
 	psg_div <= psg_div + 1'd1;
 	if(psg_div == 11) psg_div <= 0;
 	ce_psg  <= !psg_div;
 
-	m_div <= m_div + 1'd1;
-	if(m_div == 95) m_div <= 0;
-	ce_1m  <= !m_div;
+	meg_div <= meg_div + 1'd1;
+	if(meg_div == 95) meg_div <= 0;
+	ce_1m  <= !meg_div;
 end
 
 // Contention model
@@ -145,13 +167,13 @@ always @(posedge clk_sys) begin
 	reg old_ram, old_io, old_memcont, old_iocont;
 
 	old_ram <= ram_acc;
-	if(~old_ram & ram_acc & mem_contention) ram_wait <= ~status[1] & ~real_zx;
+	if(~old_ram & ram_acc & mem_contention) ram_wait <= 1;
 
 	old_memcont <= mem_contention;
 	if(~mem_contention & old_memcont) ram_wait <= 0;
-	
+
 	old_io  <= io_acc;
-	if(~old_io & io_acc & io_contention) io_wait <= ~status[1] & ~real_zx;
+	if(~old_io & io_acc & io_contention) io_wait <= 1;
 
 	old_iocont  <= io_contention;
 	if(~io_contention & old_iocont) io_wait <= 0;
@@ -169,7 +191,7 @@ wire  [7:0] joystick_1;
 wire  [1:0] buttons;
 wire  [1:0] switches;
 wire        scandoubler_disable;
-wire  [7:0] status;
+wire [31:0] status;
 
 wire        ioctl_wr;
 wire [24:0] ioctl_addr;
@@ -220,6 +242,7 @@ wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
 wire        warm_reset =  mod[2] & Fn[11];
 wire        port_we    = ~nIORQ & ~nWR & nM1;
+wire        port_rd    = ~nIORQ & ~nRD & nM1;
 
 T80pa cpu
 (
@@ -275,6 +298,7 @@ always_comb begin
 	endcase
 end
 
+wire       ram_busy;
 wire [7:0] ram_dout;
 sram ram
 (
@@ -297,7 +321,7 @@ sram ram
 	.misc_dout(),
 	.misc_rd(0),
 	.misc_we(ioctl_wr),
-	.misc_ready()
+	.misc_busy()
 );
 
 
@@ -513,7 +537,7 @@ wire [15:0] vram_dout1;
 wire [15:0] vram_dout2;
 wire  [7:0] vid_dout;
 wire        vid_sel;
-wire        soff = brdr[7] & video_mode[1];
+wire        soff = (brdr[7] & video_mode[1]) | turbo_boot;
 wire        INT_line;
 wire        INT_frame;
 wire        mem_contention;
@@ -523,6 +547,7 @@ wire  [1:0] video_mode;
 video video
 (
 	.*,
+	.full_zx(status[12:11] == 1),
 	.din(cpu_dout),
 	.dout(vid_dout),
 	.dout_en(vid_sel)
