@@ -191,6 +191,7 @@ wire  [7:0] joystick_1;
 wire  [1:0] buttons;
 wire  [1:0] switches;
 wire        scandoubler_disable;
+wire        ypbpr;
 wire [31:0] status;
 
 wire        ioctl_wr;
@@ -236,7 +237,6 @@ wire        nIORQ;
 wire        nRD;
 wire        nWR;
 wire        nRFSH;
-wire        nBUSACK;
 wire        nINT   = ~(INT_line | INT_frame | INT_midi);
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
@@ -261,7 +261,6 @@ T80pa cpu
 	.WR_n(nWR),
 	.RFSH_n(nRFSH),
 	.HALT_n(1),
-	.BUSAK_n(nBUSACK),
 	.A(addr),
 	.DO(cpu_dout),
 	.DI(cpu_din)
