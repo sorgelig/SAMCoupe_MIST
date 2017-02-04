@@ -59,7 +59,18 @@ module SamCoupe
 assign LED = ~(ioctl_erasing | ioctl_download | fdd2_io);
 
 `include "build_id.v"
-localparam CONF_STR = {"SAMCOUPE;;S,DSKMGTIMG,Drive 1;F,DSKMGTIMG,Drive 2;O4,Drive 1 Write,Prohibit,Allow;O8A,CPU Speed,Normal,6MHz,9.6MHz,12MHz,24MHz;OBC,ZX Mode Speed,Emulated,Full,Real;O5,External RAM,on,off;V,v1.25.",`BUILD_DATE};
+localparam CONF_STR = 
+{
+	"SAMCOUPE;;",
+	"S,DSKMGTIMG,Drive 1;",
+	"F,DSKMGTIMG,Drive 2;",
+	"O4,Drive 1 Write,Prohibit,Allow;",
+	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
+	"O8A,CPU Speed,Normal,6MHz,9.6MHz,12MHz,24MHz;",
+	"OBC,ZX Mode Speed,Emulated,Full,Real;",
+	"O5,External RAM,on,off;",
+	"V,v1.30.",`BUILD_DATE
+};
 
 
 ////////////////////   CLOCKS   ///////////////////
@@ -547,6 +558,7 @@ video video
 (
 	.*,
 	.full_zx(status[12:11] == 1),
+	.scale(status[2:1]),
 	.din(cpu_dout),
 	.dout(vid_dout),
 	.dout_en(vid_sel)

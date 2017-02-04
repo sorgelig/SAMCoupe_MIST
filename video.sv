@@ -53,6 +53,7 @@ module video
 	input   [3:0] border_color,
 	input         scandoubler_disable,
 	input         ypbpr,
+	input   [1:0] scale,
 	input         soff,
 	output  [1:0] video_mode,
 	input   [1:0] mode3_hi,
@@ -79,64 +80,6 @@ assign mem_contention = (fetch | (!mode & !full_zx & hc[6])) ? hc[2:0] != cpu_sl
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;
 
-wire  [5:0] VGA_Rs, VGA_Rd;
-wire  [5:0] VGA_Gs, VGA_Gd;
-wire  [5:0] VGA_Bs, VGA_Bd;
-wire        hsyncd, vsyncd;
-
-osd #(10'd10, 10'd0, 3'd4) osd
-(
-	.*,
-	.ce_pix(ce_6mp | ce_6mn),
-	.VGA_Rx({2{R, I}}),
-	.VGA_Gx({2{G, I}}),
-	.VGA_Bx({2{B, I}}),
-	.VGA_R(VGA_Rs),
-	.VGA_G(VGA_Gs),
-	.VGA_B(VGA_Bs),
-	.OSD_HS(HSync),
-	.OSD_VS(VSync)
-);
-
-scandoubler scandoubler
-(
-	.clk_sys(clk_sys),
-	.ce_x2(ce_24m),
-	.ce_x1(ce_6mp | ce_6mn),
-
-	.scanlines(0),
-
-	.hs_in(HSync),
-	.vs_in(VSync),
-	.r_in(VGA_Rs),
-	.g_in(VGA_Gs),
-	.b_in(VGA_Bs),
-
-	.hs_out(hsyncd),
-	.vs_out(vsyncd),
-	.r_out(VGA_Rd),
-	.g_out(VGA_Gd),
-	.b_out(VGA_Bd)
-);
-
-video_mixer video_mixer
-(
-	.*,
-	.ypbpr_full(1),
-
-	.r_i({VGA_Rs, VGA_Rs[5:4]}),
-	.g_i({VGA_Gs, VGA_Gs[5:4]}),
-	.b_i({VGA_Bs, VGA_Bs[5:4]}),
-	.hsync_i(HSync),
-	.vsync_i(VSync),
-
-	.r_p({VGA_Rd, VGA_Rd[5:4]}),
-	.g_p({VGA_Gd, VGA_Gd[5:4]}),
-	.b_p({VGA_Bd, VGA_Bd[5:4]}),
-	.hsync_p(hsyncd),
-	.vsync_p(vsyncd)
-);
-
 reg        HBlank;
 reg        HSync;
 reg        VBlank;
@@ -158,9 +101,13 @@ reg  [7:0] lpen;
 reg  [7:0] hpen;
 reg  [3:0] border;
 
+reg mode512;
+
 always @(posedge clk_sys) begin
+	reg m512;
 
 	if(ce_6mp) begin
+		if((vc<192) || (hc<256)) m512 <= (m512 | (mode == 2));
 		if (hc==383) begin
 			hc <= 0;
 			if (vc == 311) begin 
@@ -168,6 +115,10 @@ always @(posedge clk_sys) begin
 				flashcnt <= flashcnt + 1'd1;
 			end else begin
 				vc <= vc + 1'd1;
+			end
+			if( vc == 240) begin
+				mode512 <= m512 | ~hq2x;
+				m512 <= 0;
 			end
 		end else begin
 			hc <= hc + 1'd1;
@@ -238,6 +189,24 @@ end
 wire I;
 wire [1:0] R, G, B;
 assign {G[1],R[1],B[1],I,G[0],R[0],B[0]} = (HBlank | VBlank | soff) ? 7'b0 : clut[index];
+
+wire hq2x = (scale==1);
+video_mixer #(.LINE_LENGTH(768), .HALF_DEPTH(1)) video_mixer
+(
+	.*,
+	.ce_pix(ce_6mp | ce_6mn),
+	.ce_pix_actual(ce_6mp | (mode512 & ce_6mn)),
+
+	.scanlines(scandoubler_disable ? 2'b00 : {scale==3,scale==2}),
+
+	.ypbpr_full(1),
+	.line_start(0),
+	.mono(0),
+
+	.R({R, I}),
+	.G({G, I}),
+	.B({B, I})
+);
 
 //////////////////////////////////////////////////////////////////////////
 
