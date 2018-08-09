@@ -8,7 +8,7 @@
 - Emulation for 4MB of extended memory.
 - Two disk drives.
 - Support for disk formats: EDSK, MGT, IMG.
-- Write support (Drive 1).
+- Write support.
 - Original SAM joysticks (same as Sinclair 1 and 2).
 - Kempston joystick (useful for some ZX games).
 - SAA1099 sound chip.
@@ -16,7 +16,7 @@
 - Stereo SAM DAC on LPT1.
 - Mouse.
 
-**MiST firmware must be updated to release 2016-06-26 or later for correct OSD and disk functionality!**
+**MiST firmware must be updated to release 2018-08-10 or later for correct OSD and disk functionality!**
 
 ### Installation:
 Copy the *.rbf file at the root of the SD card. You can rename the file to core.rbf if you want the MiST to load it automatically at startup.

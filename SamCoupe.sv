@@ -56,15 +56,15 @@ module SamCoupe
    output        SDRAM_CKE
 );
 
-assign LED = ~(ioctl_erasing | ioctl_download | fdd2_io);
+assign LED = ~ioctl_download;
 
 `include "build_id.v"
 localparam CONF_STR = 
 {
 	"SAMCOUPE;;",
-	"S,DSKMGTIMG,Drive 1;",
-	"F,DSKMGTIMG,Drive 2;",
-	"O4,Drive 1 Write,Prohibit,Allow;",
+	"S0,DSKMGTIMG,Drive 1;",
+	"S1,DSKMGTIMG,Drive 2;",
+	"O4,Drive Write,Prohibit,Allow;",
 	"O12,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"O8A,CPU Speed,Normal,6MHz,9.6MHz,12MHz,24MHz;",
 	"OBC,ZX Mode Speed,Emulated,Full,Real;",
@@ -196,6 +196,8 @@ wire        ps2_kbd_clk;
 wire        ps2_kbd_data;
 wire        ps2_mouse_clk;
 wire        ps2_mouse_data;
+wire [10:0] ps2_key;
+wire [24:0] ps2_mouse;
 
 wire  [7:0] joystick_0;
 wire  [7:0] joystick_1;
@@ -209,19 +211,19 @@ wire        ioctl_wr;
 wire [24:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_download;
-wire        ioctl_erasing;
 wire  [7:0] ioctl_index;
-reg         ioctl_force_erase = 0;
 
-wire [31:0] sd_lba;
-wire        sd_rd;
-wire        sd_wr;
+wire [31:0] sd_lba = (sd_rd[0] | sd_wr[0]) ? sd_lba1 : sd_lba2;
+wire [31:0] sd_lba1, sd_lba2;
+wire  [1:0] sd_rd;
+wire  [1:0] sd_wr;
 wire        sd_ack;
 wire  [8:0] sd_buff_addr;
 wire  [7:0] sd_buff_dout;
-wire  [7:0] sd_buff_din;
+wire  [7:0] sd_buff_din= (sd_rd[0] | sd_wr[0]) ? sd_buff_din1 : sd_buff_din2;
+wire  [7:0] sd_buff_din1, sd_buff_din2;
 wire        sd_buff_wr;
-wire        img_mounted;
+wire  [1:0] img_mounted;
 wire [31:0] img_size;
 
 mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
@@ -230,6 +232,7 @@ mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 	.conf_str(CONF_STR),
 	.sd_conf(0),
 	.sd_sdhc(1),
+	.ioctl_ce(1),
 
 	// unused
 	.joystick_analog_0(),
@@ -296,15 +299,14 @@ end
 //////////////////   MEMORY   //////////////////
 reg  [24:0] ram_addr;
 always_comb begin
-	casex({fdd2_read, rom0_sel | rom1_sel, ext_ram, addr[15:14]})
-		'b1XX_XX: ram_addr = {3'd6, fdd2_addr};
-		'b01X_XX: ram_addr = {5'h10,addr[15], addr[13:0]};
-		'b001_X0: ram_addr = {ext_c_off,      addr[13:0]};
-		'b001_X1: ram_addr = {ext_d_off,      addr[13:0]};
-		'b000_00: ram_addr = {page_ab,        addr[13:0]};
-		'b000_01: ram_addr = {page_ab + 1'b1, addr[13:0]};
-		'b000_10: ram_addr = {page_cd,        addr[13:0]};
-		'b000_11: ram_addr = {page_cd + 1'b1, addr[13:0]};
+	casex({rom0_sel | rom1_sel, ext_ram, addr[15:14]})
+		'b1X_XX: ram_addr = {5'h10,addr[15], addr[13:0]};
+		'b01_X0: ram_addr = {ext_c_off,      addr[13:0]};
+		'b01_X1: ram_addr = {ext_d_off,      addr[13:0]};
+		'b00_00: ram_addr = {page_ab,        addr[13:0]};
+		'b00_01: ram_addr = {page_ab + 1'b1, addr[13:0]};
+		'b00_10: ram_addr = {page_cd,        addr[13:0]};
+		'b00_11: ram_addr = {page_cd + 1'b1, addr[13:0]};
 	endcase
 end
 
@@ -319,7 +321,7 @@ sram ram
 	.dout(ram_dout),
 	.din(cpu_dout),
 	.we(~(rom0_sel | rom1_sel | ram_wp) & ~nMREQ & ~nWR & ext_ena),
-	.rd((fdd2_read | ~nMREQ) & ~nRD),
+	.rd(~nMREQ & ~nRD),
 
 	.vid_addr1(vram_addr1),
 	.vid_addr2(vram_addr2),
@@ -597,9 +599,9 @@ always @(posedge clk_sys) begin
 	old_wr <= nWR;
 	if(old_wr & ~nWR & fdd1_io) fdd1_side <= addr[2];
 
-	old_mounted <= img_mounted;
+	old_mounted <= img_mounted[0];
 	if(cold_reset) fdd1_ready <= 0;
-		else if(~old_mounted & img_mounted) fdd1_ready <= 1;
+		else if(~old_mounted & img_mounted[0]) fdd1_ready <= 1;
 end
 
 wd1793 #(1) fdd1
@@ -614,15 +616,15 @@ wd1793 #(1) fdd1
 	.din(cpu_dout),
 	.dout(fdd1_dout),
 
-	.img_mounted(img_mounted),
+	.img_mounted(img_mounted[0]),
 	.img_size(img_size),
-	.sd_lba(sd_lba),
-	.sd_rd(sd_rd),
-	.sd_wr(sd_wr),
+	.sd_lba(sd_lba1),
+	.sd_rd(sd_rd[0]),
+	.sd_wr(sd_wr[0]),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din(sd_buff_din1),
 	.sd_buff_wr(sd_buff_wr),
 
 	.wp(~status[4]),
@@ -660,58 +662,58 @@ always @(posedge clk_sys) begin
 end
 
 // FDD2
-wire [19:0] fdd2_addr;
-wire        fdd2_rd;
 reg         fdd2_ready;
 reg         fdd2_side;
-wire        fdd2_io   = fdd_sel & addr[4] & ~nIORQ & nM1;
-wire        fdd2_read = fdd2_rd & fdd2_io;
+wire        fdd2_io = fdd_sel & addr[4] & ~nIORQ & nM1;
 wire  [7:0] fdd2_dout;
 
 always @(posedge clk_sys) begin
 	reg old_wr;
-	reg old_download;
+	reg old_mounted;
 
 	old_wr <= nWR;
 	if(old_wr & ~nWR & fdd2_io) fdd2_side <= addr[2];
 
-	old_download <= ioctl_download;
+	old_mounted <= img_mounted[1];
 	if(cold_reset) fdd2_ready <= 0;
-		else if(~ioctl_download & old_download & (ioctl_index[4:0] == 2)) fdd2_ready <= 1;
+		else if(~old_mounted & img_mounted[1]) fdd2_ready <= 1;
 end
 
-wd1793 #(0) fdd2
+wd1793 #(1) fdd2
 (
 	.clk_sys(clk_sys),
 	.ce(cpu_n),
 	.reset(reset),
-	.io_en(fdd2_io),
+	.io_en(fdd2_io & fdd2_ready),
 	.rd(~nRD),
 	.wr(~nWR),
 	.addr(addr[1:0]),
 	.din(cpu_dout),
 	.dout(fdd2_dout),
 
-	.input_active(ioctl_download & (ioctl_index[4:0] == 2)),
-	.input_addr(ioctl_addr[19:0]),
-	.input_data(ioctl_dout),
-	.input_wr(ioctl_wr),
+	.img_mounted(img_mounted[1]),
+	.img_size(img_size),
+	.sd_lba(sd_lba2),
+	.sd_rd(sd_rd[1]),
+	.sd_wr(sd_wr[1]),
+	.sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din2),
+	.sd_buff_wr(sd_buff_wr),
 
-	.buff_addr(fdd2_addr),
-	.buff_read(fdd2_rd),
-	.buff_din(ram_dout),
+	.wp(~status[4]),
 
 	.size_code(4),
 	.layout(ioctl_index[7:6] == 2),
 	.side(fdd2_side),
 	.ready(fdd2_ready),
-	
-	.img_mounted(0),
-	.img_size(0),
-	.sd_ack(0),
-	.sd_buff_addr(0),
-	.sd_buff_dout(0),
-	.sd_buff_wr(0)
+
+	.input_active(0),
+	.input_addr(0),
+	.input_data(0),
+	.input_wr(0),
+	.buff_din(0)
 );
 
 endmodule
