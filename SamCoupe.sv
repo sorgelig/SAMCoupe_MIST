@@ -558,6 +558,8 @@ wire  [1:0] video_mode;
 video video
 (
 	.*,
+	.wide(0),
+	.VGA_DE(),
 	.full_zx(status[12:11] == 1),
 	.scale(status[2:1]),
 	.din(cpu_dout),

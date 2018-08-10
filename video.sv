@@ -51,14 +51,15 @@ module video
 
 	// Misc. signals
 	input   [3:0] border_color,
+	input   [1:0] scale,
 	input         scandoubler_disable,
 	input         ypbpr,
-	input   [1:0] scale,
 	input         soff,
 	output  [1:0] video_mode,
 	input   [1:0] mode3_hi,
 	input         midi_tx,
 	input         full_zx,
+	input         wide,
 
 	// OSD IO interface
 	input         SPI_SCK,
@@ -70,7 +71,8 @@ module video
 	output  [5:0] VGA_G,
 	output  [5:0] VGA_B,
 	output        VGA_VS,
-	output        VGA_HS
+	output        VGA_HS,
+	output        VGA_DE
 );
 
 wire  [2:0] cpu_slot  = 5;
@@ -131,10 +133,14 @@ always @(posedge clk_sys) begin
 		if(hc == 76)  HSync  <= 0;
 		if(hc == 108) HBlank <= 0;
 
-		if((vc == 236) & (hc == 28))  VBlank <= 1;
 		if( vc == 240) VSync <= 1;
 		if( vc == 244) VSync <= 0;
-		if((vc == 260) & (hc == 108)) VBlank <= 0;
+
+		if(hc == 108) begin
+			if(vc == 236) VBlank <= 1;
+			if(vc == 260) VBlank <= 0;
+			if(wide) VBlank <= !(vc < 193 || vc >= (311-4));
+		end
 
 		INT_line  <= (INT_line_no < 192) & (INT_line_no == vc) & (hc<128);
 		INT_frame <= (vc == 244) & (hc<128);
@@ -194,18 +200,17 @@ wire hq2x = (scale==1);
 video_mixer #(.LINE_LENGTH(768), .HALF_DEPTH(1)) video_mixer
 (
 	.*,
-	.ce_pix(ce_6mp | ce_6mn),
-	.ce_pix_actual(ce_6mp | (mode512 & ce_6mn)),
+	.ce_pix(ce_6mp | (mode512 & ce_6mn)),
+	.ce_pix_out(),
 
-	.scanlines(scandoubler_disable ? 2'b00 : {scale==3,scale==2}),
+	.scanlines({scale==3,scale==2}),
+	.scandoubler(scale || ~scandoubler_disable),
 
-	.ypbpr_full(1),
-	.line_start(0),
 	.mono(0),
 
-	.R({R, I}),
-	.G({G, I}),
-	.B({B, I})
+	.R({R, R[1], I}),
+	.G({G, G[1], I}),
+	.B({B, B[1], I})
 );
 
 //////////////////////////////////////////////////////////////////////////

@@ -48,8 +48,8 @@ set_output_delay -clock [get_clocks {pll|altpll_component|auto_generated|pll1|cl
 set_multicycle_path -to [get_ports {VGA_*}] -setup 5
 set_multicycle_path -to [get_ports {VGA_*}] -hold 5
 
-set_multicycle_path -to {video:video|video_mixer:video_mixer|scandoubler:scandoubler|Hq2x:Hq2x|*} -setup 6
-set_multicycle_path -to {video:video|video_mixer:video_mixer|scandoubler:scandoubler|Hq2x:Hq2x|*} -hold 6
+set_multicycle_path -to {video:video|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|*} -setup 6
+set_multicycle_path -to {video:video|video_mixer:video_mixer|scandoubler:sd|Hq2x:Hq2x|*} -hold 6
 
 set_multicycle_path -from {T80pa:cpu|T80:u0|*} -setup 2
 set_multicycle_path -from {T80pa:cpu|T80:u0|*} -hold 2
