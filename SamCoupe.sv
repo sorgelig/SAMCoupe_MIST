@@ -248,12 +248,14 @@ wire        nIORQ;
 wire        nRD;
 wire        nWR;
 wire        nRFSH;
-wire        nINT   = ~(INT_line | INT_frame | INT_midi);
+reg         nINT;
 wire        reset  = buttons[1] | status[0] | cold_reset | warm_reset;
 wire        cold_reset = (mod[1] & Fn[11]) | init_reset;
 wire        warm_reset =  mod[2] & Fn[11];
 wire        port_we    = ~nIORQ & ~nWR & nM1;
 wire        port_rd    = ~nIORQ & ~nRD & nM1;
+
+always @(posedge clk_sys) if(ce_cpu_p) nINT <= ~(INT_line | INT_frame | INT_midi);
 
 T80pa cpu
 (
