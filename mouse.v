@@ -25,8 +25,7 @@ module mouse
 	input        ce_6mp,
 	input        reset,
 
-	input        ps2_mouse_clk,
-	input        ps2_mouse_data,
+	input [24:0] ps2_mouse,
 	
 	input        rd,
 	output [4:0] dout
@@ -37,10 +36,9 @@ assign dout = {1'b1, data};
 reg   [3:0] button;
 reg  [11:0] dx,ldx;
 reg  [11:0] dy,ldy;
-reg  [32:0] q;
 
-wire [11:0] mdx = {{4{q[5]}},q[19:12]};
-wire [11:0] mdy = {{4{q[6]}},q[30:23]};
+wire [11:0] mdx = {{4{ps2_mouse[4]}},ps2_mouse[15:8]};
+wire [11:0] mdy = {{4{ps2_mouse[5]}},ps2_mouse[23:16]};
 
 wire [11:0] newdx = dx + mdx;
 wire [11:0] newdy = dy + mdy;
@@ -61,17 +59,14 @@ always @* begin
 end
 
 always @(posedge clk_sys) begin
-	reg  [5:0] count;
-	integer    idle;
-	reg        old_clk, old_rd;
+	reg        old_rd;
 	reg  [7:0] timout;
-
+	reg        old_stb;
+	
 	if(reset) begin
 		dx     <= 0;
 		dy     <= 0;
 		button <= 0;
-		count  <= 0;
-		idle   <= 0;
 		queue  <= 0;
 		timout <= 0;
 		old_rd <= 0;
@@ -90,25 +85,12 @@ always @(posedge clk_sys) begin
 				dy <= dy - ldy;
 			end
 		end else begin
-			old_clk <= ps2_mouse_clk;
-			if(old_clk & ~ps2_mouse_clk) begin
-				q[count]  <= ps2_mouse_data;
-			end else if(~old_clk & ps2_mouse_clk) begin
-				count <= count + 1'b1;
-				if(count == 32) begin
-					count <= 0;
-					if((~q[0] & q[10] & ~q[11] & q[21] & ~q[22] & q[32])
-						& (q[9] == ~^q[8:1]) & (q[20] == ~^q[19:12]) & (q[31] == ~^q[30:23]))
-					begin
-						button <= q[3:1];
-						dx <= mdx[11] ? ((dx[11] & ~newdx[11]) ? 12'h800 : newdx) : ((~dx[11] & newdx[11]) ? 12'h7FF : newdx);
-						dy <= mdy[11] ? ((dy[11] & ~newdy[11]) ? 12'h800 : newdy) : ((~dy[11] & newdy[11]) ? 12'h7FF : newdy);
-					end
-				end
-				idle <= 0;
-			end else if(ps2_mouse_clk & ce_6mp) begin
-				if(idle < 3000000) idle <= idle + 1;
-					else count <= 0;
+			old_stb <= ps2_mouse[24];
+
+			if(old_stb != ps2_mouse[24]) begin
+				button <= ps2_mouse[2:0];
+				dx <= mdx[11] ? ((dx[11] & ~newdx[11]) ? 12'h800 : newdx) : ((~dx[11] & newdx[11]) ? 12'h7FF : newdx);
+				dy <= mdy[11] ? ((dy[11] & ~newdy[11]) ? 12'h800 : newdy) : ((~dy[11] & newdy[11]) ? 12'h7FF : newdy);
 			end
 
 			if(ce_6mp) begin
@@ -120,4 +102,3 @@ always @(posedge clk_sys) begin
 end
 
 endmodule
-

@@ -322,29 +322,14 @@ set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 # end ENTITY(SamCoupe)
 # ----------------------
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE quartus_sh:build_id_verilog.tcl
-set_global_assignment -name VHDL_FILE sid/wave_map.vhd
-set_global_assignment -name VHDL_FILE sid/sid_regs.vhd
-set_global_assignment -name VHDL_FILE sid/sid_mixer.vhd
-set_global_assignment -name VHDL_FILE sid/sid_filter.vhd
-set_global_assignment -name VHDL_FILE sid/sid_debug_pkg.vhd
-set_global_assignment -name VHDL_FILE sid/sid_ctrl.vhd
-set_global_assignment -name VHDL_FILE sid/Q_table.vhd
-set_global_assignment -name VHDL_FILE sid/oscillator.vhd
-set_global_assignment -name VHDL_FILE sid/my_math_pkg.vhd
-set_global_assignment -name VHDL_FILE sid/mult_acc.vhd
-set_global_assignment -name VHDL_FILE sid/adsr_multi.vhd
-set_global_assignment -name VHDL_FILE sid/sid_top.vhd
-set_global_assignment -name VHDL_FILE t80/T80_Reg.vhd
-set_global_assignment -name VHDL_FILE t80/T80_Pack.vhd
-set_global_assignment -name VHDL_FILE t80/T80_MCode.vhd
-set_global_assignment -name VHDL_FILE t80/T80_ALU.vhd
-set_global_assignment -name VHDL_FILE t80/T80.vhd
-set_global_assignment -name VHDL_FILE t80/T80pa.vhd
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+set_global_assignment -name QIP_FILE sid/sid.qip
+set_global_assignment -name QIP_FILE t80/T80.qip
 set_global_assignment -name VERILOG_FILE pll.v
-set_global_assignment -name SYSTEMVERILOG_FILE sram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE sdram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE saa1099.sv
 set_global_assignment -name VERILOG_FILE sigma_delta_dac.v
-set_global_assignment -name VERILOG_FILE keyboard.v
+set_global_assignment -name SYSTEMVERILOG_FILE keyboard.sv
 set_global_assignment -name VERILOG_FILE mouse.v
 set_global_assignment -name VERILOG_FILE vram.v
 set_global_assignment -name SYSTEMVERILOG_FILE hq2x.sv
@@ -356,4 +341,3 @@ set_global_assignment -name SYSTEMVERILOG_FILE wd1793.sv
 set_global_assignment -name VERILOG_FILE mist_io.v
 set_global_assignment -name SDC_FILE SamCoupe.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE SamCoupe.sv
-set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

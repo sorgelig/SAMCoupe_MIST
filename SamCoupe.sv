@@ -1,7 +1,7 @@
 //============================================================================
 // 
-//  SamCoupe replica for MiST board
-//  Copyright (C) 2016 Sorgelig
+//  SAM Coupe replica for MiST
+//  Copyright (C) 2016-2018 Sorgelig
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -69,7 +69,7 @@ localparam CONF_STR =
 	"O8A,CPU Speed,Normal,6MHz,9.6MHz,12MHz,24MHz;",
 	"OBC,ZX Mode Speed,Emulated,Full,Real;",
 	"O5,External RAM,on,off;",
-	"V,v1.30.",`BUILD_DATE
+	"V,v1.55.",`BUILD_DATE
 };
 
 
@@ -192,10 +192,6 @@ end
 
 
 //////////////////   MIST ARM I/O   ///////////////////
-wire        ps2_kbd_clk;
-wire        ps2_kbd_data;
-wire        ps2_mouse_clk;
-wire        ps2_mouse_data;
 wire [10:0] ps2_key;
 wire [24:0] ps2_mouse;
 
@@ -207,25 +203,22 @@ wire        scandoubler_disable;
 wire        ypbpr;
 wire [31:0] status;
 
-wire        ioctl_wr;
-wire [24:0] ioctl_addr;
-wire  [7:0] ioctl_dout;
-wire        ioctl_download;
-wire  [7:0] ioctl_index;
-
-wire [31:0] sd_lba = (sd_rd[0] | sd_wr[0]) ? sd_lba1 : sd_lba2;
-wire [31:0] sd_lba1, sd_lba2;
+wire [31:0] sd_lba;
 wire  [1:0] sd_rd;
 wire  [1:0] sd_wr;
 wire        sd_ack;
 wire  [8:0] sd_buff_addr;
 wire  [7:0] sd_buff_dout;
-wire  [7:0] sd_buff_din= (sd_rd[0] | sd_wr[0]) ? sd_buff_din1 : sd_buff_din2;
-wire  [7:0] sd_buff_din1, sd_buff_din2;
+wire  [7:0] sd_buff_din;
 wire        sd_buff_wr;
 wire  [1:0] img_mounted;
 wire [31:0] img_size;
 
+wire        ioctl_wr;
+wire [24:0] ioctl_addr;
+wire  [7:0] ioctl_dout;
+wire        ioctl_download;
+wire  [7:0] ioctl_index;
 mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 (
 	.*,
@@ -235,6 +228,10 @@ mist_io #(.STRLEN($size(CONF_STR)>>3)) user_io
 	.ioctl_ce(1),
 
 	// unused
+	.ps2_kbd_clk(),
+	.ps2_kbd_data(),
+	.ps2_mouse_clk(),
+	.ps2_mouse_data(),
 	.joystick_analog_0(),
 	.joystick_analog_1(),
 	.sd_ack_conf()
@@ -312,7 +309,7 @@ end
 
 wire       ram_busy;
 wire [7:0] ram_dout;
-sram ram
+sdram ram
 (
 	.*,
 	.init(~locked),
@@ -585,12 +582,25 @@ mouse mouse( .*, .dout(mouse_data), .rd(kbdr_sel & &addr[15:8] & nM1 & ~nIORQ & 
 
 ///////////////////   FDC   ///////////////////
 
+reg fdd_num = 0;
+always @(posedge clk_sys) begin
+	if(sd_rd[1]|sd_wr[1]) fdd_num <= 1;
+	if(sd_rd[0]|sd_wr[0]) fdd_num <= 0;
+end
+
+assign sd_buff_din = fdd_num ? fdd2_buf_dout : fdd1_buf_dout;
+assign sd_lba      = fdd_num ? fdd2_lba      : fdd1_lba;
+
+
+
 // FDD1
 wire        fdd1_busy;
 reg         fdd1_ready;
 reg         fdd1_side;
 wire        fdd1_io   = fdd_sel & ~addr[4] & ~nIORQ & nM1;
 wire  [7:0] fdd1_dout;
+wire  [7:0] fdd1_buf_dout;
+wire [31:0] fdd1_lba;
 
 always @(posedge clk_sys) begin
 	reg old_wr;
@@ -617,14 +627,14 @@ wd1793 #(1) fdd1
 	.dout(fdd1_dout),
 
 	.img_mounted(img_mounted[0]),
-	.img_size(img_size),
-	.sd_lba(sd_lba1),
+	.img_size(img_size[19:0]),
+	.sd_lba(fdd1_lba),
 	.sd_rd(sd_rd[0]),
 	.sd_wr(sd_wr[0]),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din1),
+	.sd_buff_din(fdd1_buf_dout),
 	.sd_buff_wr(sd_buff_wr),
 
 	.wp(~status[4]),
@@ -661,11 +671,15 @@ always @(posedge clk_sys) begin
 	end
 end
 
+
+
 // FDD2
 reg         fdd2_ready;
 reg         fdd2_side;
-wire        fdd2_io = fdd_sel & addr[4] & ~nIORQ & nM1;
+wire        fdd2_io   = fdd_sel & addr[4] & ~nIORQ & nM1;
 wire  [7:0] fdd2_dout;
+wire  [7:0] fdd2_buf_dout;
+wire [31:0] fdd2_lba;
 
 always @(posedge clk_sys) begin
 	reg old_wr;
@@ -692,14 +706,14 @@ wd1793 #(1) fdd2
 	.dout(fdd2_dout),
 
 	.img_mounted(img_mounted[1]),
-	.img_size(img_size),
-	.sd_lba(sd_lba2),
+	.img_size(img_size[19:0]),
+	.sd_lba(fdd2_lba),
 	.sd_rd(sd_rd[1]),
 	.sd_wr(sd_wr[1]),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din2),
+	.sd_buff_din(fdd2_buf_dout),
 	.sd_buff_wr(sd_buff_wr),
 
 	.wp(~status[4]),
