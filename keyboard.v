@@ -42,8 +42,7 @@ module keyboard
 	input             restart,
 	input             clk_sys,
 
-	input             ps2_kbd_clk,
-	input             ps2_kbd_data,
+	input      [10:0] ps2_key,
 
 	input      [15:0] addr,
 	output      [7:0] key_data,
@@ -53,12 +52,10 @@ module keyboard
 	output reg  [2:0] mod = 0
 );
 
-reg  [3:0] prev_clk  = 0;
-reg [11:0] sreg  = 'hFFF;
-wire[11:0] kdata = {ps2_kbd_data,sreg[11:1]};
-wire [7:0] kcode = kdata[9:2];
 reg  [7:0] keys[8:0];
 reg        release_btn = 0;
+reg        input_strobe;
+reg  [7:0] kcode;
 
 assign key_data = ({8{addr[8]}}  | keys[0]) & ({8{addr[9]}}  | keys[1]) & ({8{addr[10]}} | keys[2]) & ({8{addr[11]}} | keys[3])
                  &({8{addr[12]}} | keys[4]) & ({8{addr[13]}} | keys[5]) & ({8{addr[14]}} | keys[6]) & ({8{addr[15]}} | keys[7])
@@ -69,7 +66,7 @@ wire shift = mod[0];
 always @(posedge clk_sys) begin
 	reg auto_en;
 	reg old_anykey, old_auto;
-	reg old_reset = 0, old_sw;
+	reg old_reset = 0, old_sw, old_state;
 	reg mode;
 
 	old_sw <= mod[2] & mod[0];
@@ -85,8 +82,6 @@ always @(posedge clk_sys) begin
 	old_reset <= reset;
 	if((~old_reset & reset) | (~old_sw & mod[2] & mod[0]))begin
 		if(reset) mode <= 0;
-		prev_clk<= 0;
-		sreg    <= 'hFFF;
 		keys[0] <= 'hFF;
 		keys[1] <= 'hFF;
 		keys[2] <= 'hFF;
@@ -97,15 +92,17 @@ always @(posedge clk_sys) begin
 		keys[7] <= 'hFF;
 		keys[8] <= 'hFF;
 	end else begin
-		prev_clk <= {ps2_kbd_clk,prev_clk[3:1]};
-		if(prev_clk == 1) begin
-			if (kdata[11] & ^kdata[10:2] & ~kdata[1] & kdata[0]) begin
-				sreg <= 'hFFF;
 
-				if(kcode == 8'he0) ;
-				else if (kcode == 8'hf0) release_btn <= 1;
-				else begin
-					release_btn <= 0;
+		input_strobe <= 0;
+		old_state <= ps2_key[10];
+
+		if(old_state != ps2_key[10]) begin
+			release_btn <= ~ps2_key[9];
+			kcode <= ps2_key[7:0];
+			input_strobe <= 1;
+		end
+
+		if(input_strobe) begin
 
 					case(kcode)
 						8'h59 : mod[0] <= ~release_btn; // right shift
@@ -408,10 +405,6 @@ always @(posedge clk_sys) begin
 							default:;
 						endcase
 					end
-				end
-			end else begin
-				sreg <= kdata;
-			end
 		end
 	end	
 end
