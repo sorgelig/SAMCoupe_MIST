@@ -75,9 +75,8 @@ module video
 	output        VGA_DE
 );
 
-wire  [2:0] cpu_slot  = 5;
-assign io_contention  = hc[2:0] != cpu_slot;
-assign mem_contention = (fetch | (!mode & !full_zx & hc[6])) ? hc[2:0] != cpu_slot : hc[1:0] != cpu_slot[1:0];
+assign io_contention  = |hc[2:0];
+assign mem_contention = |{(fetch | (!mode & !full_zx & hc[6])) & hc[2], hc[1:0]};
 
 assign vram_addr1 = vaddr1;
 assign vram_addr2 = vaddr2;
@@ -108,6 +107,9 @@ reg mode512;
 always @(posedge clk_sys) begin
 	reg m512;
 
+	INT_line  <= (hc >= 4) & (hc<132) & (INT_line_no < 192) & (INT_line_no == vc);
+	INT_frame <= (hc >= 4) & (hc<132) & (vc == 244);
+
 	if(ce_6mp) begin
 		if((vc<192) || (hc<256)) m512 <= (m512 | (mode == 2));
 		if (hc==383) begin
@@ -128,22 +130,20 @@ always @(posedge clk_sys) begin
 		if(mode == 2) shift <= shift << 2;
 	end
 	if(ce_6mn) begin
-		if(hc == 28)  HBlank <= 1;
-		if(hc == 44)  HSync  <= 1;
-		if(hc == 76)  HSync  <= 0;
-		if(hc == 108) HBlank <= 0;
-
-		if( vc == 240) VSync <= 1;
-		if( vc == 244) VSync <= 0;
+		if(hc == 32)  HBlank <= 1;
+		if(hc == 48)  begin
+			HSync  <= 1;
+			if( vc == 240) VSync <= 1;
+			if( vc == 244) VSync <= 0;
+		end
+		if(hc == 80)  HSync  <= 0;
+		if(hc == 112) HBlank <= 0;
 
 		if(hc == 108) begin
 			if(vc == 236) VBlank <= 1;
 			if(vc == 260) VBlank <= 0;
 			if(wide) VBlank <= !(vc < 193 || vc >= (311-4));
 		end
-
-		INT_line  <= (INT_line_no < 192) & (INT_line_no == vc) & (hc<128);
-		INT_frame <= (vc == 244) & (hc<128);
 
 		case(mode)
 			0,1: shift <= shift << 1;
@@ -163,7 +163,7 @@ always @(posedge clk_sys) begin
 			end
 		end
 
-		if(hc[2:0] == 4) begin
+		if(!hc[2:0]) begin
 			paper <= fetch;
 			shift <= {vram_dout1[7:0],vram_dout1[15:8],vram_dout2[7:0],vram_dout2[15:8]};
 			attr  <= fetch ? vram_dout2[7:0] : 8'hFF;

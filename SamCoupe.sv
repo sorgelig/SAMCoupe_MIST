@@ -69,7 +69,7 @@ localparam CONF_STR =
 	"O8A,CPU Speed,Normal,6MHz,9.6MHz,12MHz,24MHz;",
 	"OBC,ZX Mode Speed,Emulated,Full,Real;",
 	"O5,External RAM,on,off;",
-	"V,v1.55.",`BUILD_DATE
+	"V,v1.56.",`BUILD_DATE
 };
 
 
