@@ -107,8 +107,8 @@ reg mode512;
 always @(posedge clk_sys) begin
 	reg m512;
 
-	INT_line  <= (hc >= 4) & (hc<132) & (INT_line_no < 192) & (INT_line_no == vc);
-	INT_frame <= (hc >= 4) & (hc<132) & (vc == 244);
+	INT_line  <= (hc >= 3) & (hc<132) & (INT_line_no < 192) & (INT_line_no == vc);
+	INT_frame <= (hc >= 3) & (hc<132) & (vc == 244);
 
 	if(ce_6mp) begin
 		if((vc<192) || (hc<256)) m512 <= (m512 | (mode == 2));
